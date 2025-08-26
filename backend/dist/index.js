@@ -27,7 +27,7 @@ wss.on("connection", (ws) => {
         console.log("Client disconnected");
         const idx = clients.indexOf(ws);
         if (idx !== -1)
-            clients.splice(idx, 1);
+            clients.splice(idx, 1); // push the clients to the ws
     });
 });
 // @ts-ignore
@@ -40,7 +40,7 @@ redisSubscriber.subscribe("trades", (err, count) => {
 // @ts-ignore
 redisSubscriber.on("message", async (_chafromnnel, message) => {
     const trade = JSON.parse(message);
-    console.log("Trade received via Redis:", trade);
+    console.log("trades received with redis", trade);
     try {
         await pool.query(`INSERT INTO trades (trade_id, symbol, price, quantity, side, trade_time)
     VALUES ($1, $2, $3, $4, $5, $6)

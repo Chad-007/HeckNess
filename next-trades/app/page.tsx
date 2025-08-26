@@ -325,19 +325,12 @@ export default function HomePage() {
           </div>
         </div>
       </div>
-
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          
-          {/* Chart Section */}
           <div className="lg:col-span-3">
-            <CandlestickChart candles={candles} />
+          <CandlestickChart candles={candles} />
           </div>
-
-          {/* Sidebar */}
           <div className="space-y-6">
-            {/* Market Stats */}
             <div className="bg-gray-900/50 rounded-lg border border-gray-800 p-4">
               <h3 className="text-sm font-medium text-gray-400 mb-4">Market Stats</h3>
               {candles.length > 0 && (

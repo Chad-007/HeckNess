@@ -12,7 +12,6 @@
   // @ts-ignore
   const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
 
-
   const pool = new Pool({
     user: "alan",
     host: "127.0.0.1",
@@ -23,17 +22,14 @@
 
 
   const wss = new WebSocket.Server({ port: 3006 });
-
-  const clients: WebSocket[] = [];
-
-  
+  const clients: WebSocket[] = [];  
   wss.on("connection", (ws) => {
     console.log("Client connected");
     clients.push(ws);
     ws.on("close", () => {
       console.log("Client disconnected");
       const idx = clients.indexOf(ws);
-      if (idx !== -1) clients.splice(idx, 1);
+      if (idx !== -1) clients.splice(idx, 1); // push the clients to the ws
     });
   });
 
@@ -48,7 +44,7 @@
   // @ts-ignore
   redisSubscriber.on("message", async (_chafromnnel, message) => {
     const trade = JSON.parse(message);
-    console.log("Trade received via Redis:", trade);
+    console.log("trades received with redis", trade);
     try {
     await pool.query(
     `INSERT INTO trades (trade_id, symbol, price, quantity, side, trade_time)
