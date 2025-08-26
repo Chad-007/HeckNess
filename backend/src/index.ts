@@ -11,6 +11,8 @@
 
   // @ts-ignore
   const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
+
+
   const pool = new Pool({
     user: "alan",
     host: "127.0.0.1",
@@ -18,23 +20,31 @@
     password: "alanpass",
     port: 5433,
   });
+
+
   const wss = new WebSocket.Server({ port: 3006 });
+
   const clients: WebSocket[] = [];
+
+  
   wss.on("connection", (ws) => {
     console.log("Client connected");
     clients.push(ws);
-
     ws.on("close", () => {
       console.log("Client disconnected");
       const idx = clients.indexOf(ws);
       if (idx !== -1) clients.splice(idx, 1);
     });
   });
+
+
   // @ts-ignore
   redisSubscriber.subscribe("trades", (err, count) => {
     if (err) console.error("Redis subscribe failed:", err);
     else console.log(`Subscribed to ${count} channel(s).`);
   });
+
+
   // @ts-ignore
   redisSubscriber.on("message", async (_chafromnnel, message) => {
     const trade = JSON.parse(message);
@@ -46,9 +56,8 @@
     ON CONFLICT (trade_id, trade_time) DO NOTHING`,
     [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]
   );
-
     } catch (err) {
-      console.error("DB insert error:", err);
+      console.error(err);
     }
     clients.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(trade));
@@ -64,7 +73,7 @@
       res.json(result.rows);
     } catch (err) {
       console.error(err);
-      res.status(500).send("DB error");
+      res.status(500).send("error");
     }
   });
 
@@ -79,7 +88,7 @@
     };
 
     const view = viewMap[interval as string];
-    if (!view) return res.status(400).send("Interval not supported");
+    if (!view) return res.status(400).send("not working");
 
     try {
       const result = await pool.query(
@@ -92,9 +101,7 @@
       res.json(result.rows);
     } catch (err) {
       console.error(err);
-      res.status(500).send("DB error");
+      res.status(500).send("error");
     }
   });
-
-
-  app.listen(3000);
+app.listen(3000);

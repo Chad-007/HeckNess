@@ -47,7 +47,7 @@ redisSubscriber.on("message", async (_chafromnnel, message) => {
     ON CONFLICT (trade_id, trade_time) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
     }
     catch (err) {
-        console.error("DB insert error:", err);
+        console.error(err);
     }
     clients.forEach((ws) => {
         if (ws.readyState === WebSocket.OPEN)
@@ -62,7 +62,7 @@ app.get("/trades", async (req, res) => {
     }
     catch (err) {
         console.error(err);
-        res.status(500).send("DB error");
+        res.status(500).send("error");
     }
 });
 app.get("/candles", async (req, res) => {
@@ -75,7 +75,7 @@ app.get("/candles", async (req, res) => {
     };
     const view = viewMap[interval];
     if (!view)
-        return res.status(400).send("Interval not supported");
+        return res.status(400).send("not working");
     try {
         const result = await pool.query(`SELECT bucket, symbol, open_price, high_price, low_price, close_price, volume
         FROM ${view}
@@ -85,7 +85,7 @@ app.get("/candles", async (req, res) => {
     }
     catch (err) {
         console.error(err);
-        res.status(500).send("DB error");
+        res.status(500).send("error");
     }
 });
 app.listen(3000);
