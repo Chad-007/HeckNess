@@ -1,26 +1,29 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Redis = require("ioredis");
-const WebSocketServer = require("ws");
+const express = require("express");
 const WebSocket = require("ws");
-// the redis part :)
-// @ts-ignore
-const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
-const wss = new WebSocket.Server({ port: 3006 });
-wss.on("connection", (ws) => {
-    console.log("client connected");
-    //@ts-ignore
-    redisSubscriber.subscribe("trades", (err, count) => {
-        if (err)
-            console.error("subscribe failed:", err);
-        else
-            console.log(`subscribed to ${count} channel(s).`);
-    });
-    //@ts-ignore
-    redisSubscriber.on("message", (channel, message) => {
-        const trade = JSON.parse(message);
-        console.log("trade received via redis:", trade);
-        ws.send(JSON.stringify(trade));
-    });
+const Redis = require("ioredis");
+const app = express();
+app.use(express.json());
+const redis = new Redis.default({
+    host: "127.0.0.1",
+    port: 6380,
+});
+const mainWs = new WebSocket("ws://localhost:3006");
+mainWs.on("open", () => {
+    console.log("Connected to main WebSocket server");
+});
+const binanceSocket = new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@trade");
+binanceSocket.on("message", async (data) => {
+    const trade = JSON.parse(data.toString());
+    try {
+        await redis.publish("trades", JSON.stringify(trade));
+        if (mainWs.readyState === WebSocket.OPEN) {
+            mainWs.send(JSON.stringify(trade));
+        }
+    }
+    catch (err) {
+        console.error("Error inserting/publishing trade:", err);
+    }
 });
 //# sourceMappingURL=index.js.map
