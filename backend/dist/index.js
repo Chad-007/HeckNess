@@ -8,7 +8,7 @@ const cors = require("cors");
 const { Pool } = pg;
 const app = express();
 app.use(express.json());
-app.use(cors);
+app.use(cors());
 // @ts-ignore
 const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
 const pool = new Pool({
@@ -43,8 +43,8 @@ redisSubscriber.on("message", async (_chafromnnel, message) => {
     console.log("Trade received via Redis:", trade);
     try {
         await pool.query(`INSERT INTO trades (trade_id, symbol, price, quantity, side, trade_time)
-   VALUES ($1, $2, $3, $4, $5, $6)
-   ON CONFLICT (trade_id, trade_time) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (trade_id, trade_time) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
     }
     catch (err) {
         console.error("DB insert error:", err);
@@ -66,18 +66,26 @@ app.get("/trades", async (req, res) => {
     }
 });
 app.get("/candles", async (req, res) => {
-    const { interval = "5 minutes", duration = "1 hour" } = req.query;
+    const { interval = "30 seconds", duration = "1 hour" } = req.query;
+    const viewMap = {
+        "30 seconds": "trades_30s",
+        "5 minutes": "trades_5m",
+        "10 minutes": "trades_10m",
+        "30 minutes": "trades_30m",
+    };
+    const view = viewMap[interval];
+    if (!view)
+        return res.status(400).send("Interval not supported");
     try {
-        // For now, we'll only use the 5-minute view
         const result = await pool.query(`SELECT bucket, symbol, open_price, high_price, low_price, close_price, volume
-       FROM trades_5m
-       WHERE bucket >= NOW() - $1::interval
-       ORDER BY bucket`, [duration]);
+        FROM ${view}
+        WHERE bucket >= NOW() - $1::interval
+        ORDER BY bucket`, [duration]);
         res.json(result.rows);
     }
     catch (err) {
         console.error(err);
-        res.status(500).send("error");
+        res.status(500).send("DB error");
     }
 });
 app.listen(3000);

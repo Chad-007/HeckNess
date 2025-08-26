@@ -1,90 +1,100 @@
-import express = require("express");
-import WebSocket = require("ws");
-import pg = require("pg");
-import Redis = require("ioredis");
-import cors = require("cors")
+  import express = require("express");
+  import WebSocket = require("ws");
+  import pg = require("pg");
+  import Redis = require("ioredis");
+  import cors = require("cors")
 
-const { Pool } = pg;
-const app = express();
-app.use(express.json());
-app.use(cors)
+  const { Pool } = pg;
+  const app = express();
+  app.use(express.json());
+  app.use(cors())
 
-// @ts-ignore
-const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
-const pool = new Pool({
-  user: "alan",
-  host: "127.0.0.1",
-  database: "alantsdb",
-  password: "alanpass",
-  port: 5433,
-});
-const wss = new WebSocket.Server({ port: 3006 });
-const clients: WebSocket[] = [];
-wss.on("connection", (ws) => {
-  console.log("Client connected");
-  clients.push(ws);
-
-  ws.on("close", () => {
-    console.log("Client disconnected");
-    const idx = clients.indexOf(ws);
-    if (idx !== -1) clients.splice(idx, 1);
+  // @ts-ignore
+  const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
+  const pool = new Pool({
+    user: "alan",
+    host: "127.0.0.1",
+    database: "alantsdb",
+    password: "alanpass",
+    port: 5433,
   });
-});
-// @ts-ignore
-redisSubscriber.subscribe("trades", (err, count) => {
-  if (err) console.error("Redis subscribe failed:", err);
-  else console.log(`Subscribed to ${count} channel(s).`);
-});
-// @ts-ignore
-redisSubscriber.on("message", async (_chafromnnel, message) => {
-  const trade = JSON.parse(message);
-  console.log("Trade received via Redis:", trade);
-  try {
-   await pool.query(
-  `INSERT INTO trades (trade_id, symbol, price, quantity, side, trade_time)
-   VALUES ($1, $2, $3, $4, $5, $6)
-   ON CONFLICT (trade_id, trade_time) DO NOTHING`,
-  [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]
-);
+  const wss = new WebSocket.Server({ port: 3006 });
+  const clients: WebSocket[] = [];
+  wss.on("connection", (ws) => {
+    console.log("Client connected");
+    clients.push(ws);
 
-  } catch (err) {
-    console.error("DB insert error:", err);
-  }
-  clients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(trade));
+    ws.on("close", () => {
+      console.log("Client disconnected");
+      const idx = clients.indexOf(ws);
+      if (idx !== -1) clients.splice(idx, 1);
+    });
   });
-});
-app.get("/trades", async (req, res) => {
-  const { start, end } = req.query;
-  try {
-    const result = await pool.query(
-      `SELECT * FROM trades WHERE trade_time BETWEEN $1 AND $2 ORDER BY trade_time DESC`,
-      [start, end]
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("DB error");
-  }
-});
+  // @ts-ignore
+  redisSubscriber.subscribe("trades", (err, count) => {
+    if (err) console.error("Redis subscribe failed:", err);
+    else console.log(`Subscribed to ${count} channel(s).`);
+  });
+  // @ts-ignore
+  redisSubscriber.on("message", async (_chafromnnel, message) => {
+    const trade = JSON.parse(message);
+    console.log("Trade received via Redis:", trade);
+    try {
+    await pool.query(
+    `INSERT INTO trades (trade_id, symbol, price, quantity, side, trade_time)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (trade_id, trade_time) DO NOTHING`,
+    [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]
+  );
 
-app.get("/candles", async (req, res) => {
-  const { interval = "5 minutes", duration = "1 hour" } = req.query;
-  try {
-    // For now, we'll only use the 5-minute view
-    const result = await pool.query(
-      `SELECT bucket, symbol, open_price, high_price, low_price, close_price, volume
-       FROM trades_5m
-       WHERE bucket >= NOW() - $1::interval
-       ORDER BY bucket`,
-      [duration]
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("error");
-  }
-});
+    } catch (err) {
+      console.error("DB insert error:", err);
+    }
+    clients.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(trade));
+    });
+  });
+  app.get("/trades", async (req, res) => {
+    const { start, end } = req.query;
+    try {
+      const result = await pool.query(
+        `SELECT * FROM trades WHERE trade_time BETWEEN $1 AND $2 ORDER BY trade_time DESC`,
+        [start, end]
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).send("DB error");
+    }
+  });
+
+  app.get("/candles", async (req, res) => {
+    const { interval = "30 seconds", duration = "1 hour" } = req.query;
+
+    const viewMap: { [key: string]: string } = {
+      "30 seconds": "trades_30s",
+      "5 minutes": "trades_5m",
+      "10 minutes": "trades_10m",
+      "30 minutes": "trades_30m",
+    };
+
+    const view = viewMap[interval as string];
+    if (!view) return res.status(400).send("Interval not supported");
+
+    try {
+      const result = await pool.query(
+        `SELECT bucket, symbol, open_price, high_price, low_price, close_price, volume
+        FROM ${view}
+        WHERE bucket >= NOW() - $1::interval
+        ORDER BY bucket`,
+        [duration]
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).send("DB error");
+    }
+  });
 
 
-app.listen(3000);
+  app.listen(3000);
