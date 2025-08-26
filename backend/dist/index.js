@@ -4,9 +4,11 @@ const express = require("express");
 const WebSocket = require("ws");
 const pg = require("pg");
 const Redis = require("ioredis");
+const cors = require("cors");
 const { Pool } = pg;
 const app = express();
 app.use(express.json());
+app.use(cors);
 // @ts-ignore
 const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
 const pool = new Pool({
@@ -41,8 +43,8 @@ redisSubscriber.on("message", async (_chafromnnel, message) => {
     console.log("Trade received via Redis:", trade);
     try {
         await pool.query(`INSERT INTO trades (trade_id, symbol, price, quantity, side, trade_time)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (trade_id) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
+   VALUES ($1, $2, $3, $4, $5, $6)
+   ON CONFLICT (trade_id, trade_time) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
     }
     catch (err) {
         console.error("DB insert error:", err);
@@ -64,18 +66,13 @@ app.get("/trades", async (req, res) => {
     }
 });
 app.get("/candles", async (req, res) => {
-    const { interval = "1 minute", duration = "1 hour" } = req.query;
+    const { interval = "5 minutes", duration = "1 hour" } = req.query;
     try {
-        const result = await pool.query(`SELECT time_bucket($1, trade_time) AS bucket,
-              FIRST(price, trade_time) AS open,
-              MAX(price) AS high,
-              MIN(price) AS low,
-              LAST(price, trade_time) AS close,
-              SUM(quantity) AS volume
-       FROM trades
-       WHERE trade_time >= NOW() - $2::interval
-       GROUP BY bucket
-       ORDER BY bucket`, [interval, duration]);
+        // For now, we'll only use the 5-minute view
+        const result = await pool.query(`SELECT bucket, symbol, open_price, high_price, low_price, close_price, volume
+       FROM trades_5m
+       WHERE bucket >= NOW() - $1::interval
+       ORDER BY bucket`, [duration]);
         res.json(result.rows);
     }
     catch (err) {
