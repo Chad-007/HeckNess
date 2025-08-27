@@ -9,7 +9,7 @@
   app.use(express.json());
   app.use(cors())
 
-
+  
   // @ts-ignore
   const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
 
