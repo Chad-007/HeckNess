@@ -3,50 +3,40 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function Signup() {
+export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [isHovered, setIsHovered] = useState(false);
-  const [isLoginHovered, setIsLoginHovered] = useState(false);
+  const [isSignupHovered, setIsSignupHovered] = useState(false);
   const [usernameActive, setUsernameActive] = useState(false);
   const [passwordActive, setPasswordActive] = useState(false);
-  const [confirmPasswordActive, setConfirmPasswordActive] = useState(false);
   const router = useRouter();
 
-  const handleSignup = async () => {
-    if (!username.trim() || !password.trim() || !confirmPassword.trim()) {
-      alert("Please fill in all fields.");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      alert("Passwords do not match.");
-      return;
-    }
-
-    if (password.length < 6) {
-      alert("Password must be at least 6 characters long.");
+  const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) {
+      alert("Please enter both username and password.");
       return;
     }
 
     try {
-      const res = await fetch("http://localhost:3005/signup", {
+      const res = await fetch("http://localhost:3005/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
       if (res.ok) {
-        alert("Account created successfully! Please login.");
-        router.push("/login");
+        const data = await res.json();
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("balance", data.balance);
+        router.push("/");
       } else {
         const error = await res.json();
         alert(error.error);
       }
     } catch (err) {
       console.error(err);
-      alert("Signup failed");
+      alert("Login failed");
     }
   };
 
@@ -178,7 +168,7 @@ export default function Signup() {
   return (
     <div style={pageStyle}>
       <div style={formStyle}>
-        <h1 style={headingStyle}>Sign Up</h1>
+        <h1 style={headingStyle}>Login</h1>
         
         <div style={inputContainerStyle}>
           <input
@@ -220,26 +210,6 @@ export default function Signup() {
           </label>
         </div>
 
-        <div style={inputContainerStyle}>
-          <input
-            type="password"
-            style={{ 
-              ...inputStyle, 
-              ...(confirmPasswordActive ? inputFocusStyle : {}) 
-            }}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            onFocus={() => setConfirmPasswordActive(true)}
-            onBlur={() => setConfirmPasswordActive(confirmPassword !== "")}
-          />
-          <label style={{ 
-            ...labelStyle, 
-            ...(confirmPasswordActive || confirmPassword ? labelActiveStyle : {}) 
-          }}>
-            Confirm Password
-          </label>
-        </div>
-
         <button
           style={{ 
             ...buttonStyle, 
@@ -247,23 +217,23 @@ export default function Signup() {
           }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          onClick={handleSignup}
+          onClick={handleLogin}
         >
-          Create Account
+          Sign In
         </button>
 
         <div style={linkContainerStyle}>
-          <span style={linkTextStyle}>Already have an account?</span>
+          <span style={linkTextStyle}>Don&apos;t have an account?</span>
           <Link 
-            href="/login" 
+            href="/signup" 
             style={{ 
               ...linkStyle, 
-              ...(isLoginHovered ? linkHoverStyle : {}) 
+              ...(isSignupHovered ? linkHoverStyle : {}) 
             }}
-            onMouseEnter={() => setIsLoginHovered(true)}
-            onMouseLeave={() => setIsLoginHovered(false)}
+            onMouseEnter={() => setIsSignupHovered(true)}
+            onMouseLeave={() => setIsSignupHovered(false)}
           >
-            Sign In
+            Sign Up
           </Link>
         </div>
       </div>
