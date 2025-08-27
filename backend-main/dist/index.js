@@ -156,14 +156,19 @@ app.post("/close-order", authMiddleware, async (req, res) => {
         let finalValue = 0;
         let pnl = 0;
         if (order.type === "buy") {
-            finalValue = order.quantity * currentPrice;
+            finalValue = order.quantity * currentPrice; // total value of buy position
         }
         else {
-            finalValue = order.order_amount + (order.entry_price - currentPrice) * order.quantity;
+            finalValue = (order.entry_price - currentPrice) * order.quantity; // profit/loss of sell position only
         }
-        pnl = finalValue - order.order_amount;
+        pnl = finalValue; // for sell, pnl = profit/loss
+        if (order.type === "buy") {
+            pnl = finalValue - order.order_amount;
+        }
+        // Update balance: add pnl + original order amount for buy
+        let balanceIncrease = order.type === "buy" ? finalValue : finalValue + order.order_amount;
+        await pool.query("UPDATE users SET balance = balance + $1 WHERE id=$2", [balanceIncrease, user.id]);
         await pool.query("UPDATE orders SET status='manually_closed', exit_price=$1, pnl=$2 WHERE id=$3", [currentPrice, pnl, orderId]);
-        await pool.query("UPDATE users SET balance = balance + $1 WHERE id=$2", [finalValue, user.id]);
         res.json({ message: "Order closed successfully", pnl, finalValue });
     }
     catch (err) {

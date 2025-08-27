@@ -375,7 +375,7 @@ export default function HomePage() {
               <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Amount ($)</label>
               <input
                 type="number"
-                value={orderAmount * leverage}
+                value={orderAmount}
                 onChange={(e) => setOrderAmount(parseFloat(e.target.value))}
                 className="w-full bg-transparent text-white border-b border-gray-700 py-3 outline-none focus:border-white transition-colors text-lg"
                 style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}

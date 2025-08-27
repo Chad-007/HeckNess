@@ -159,34 +159,32 @@ app.post("/close-order", authMiddleware, async (req: any, res: any) => {
       "SELECT * FROM orders WHERE id=$1 AND user_id=$2 AND status='active'",
       [orderId, user.id]
     );
-
-
     if (orderRes.rows.length === 0) {
       return res.status(404).json({ error: "Order not found or already closed" });
     }
-
-
     const order = orderRes.rows[0];
     const currentPrice = latestPrices[order.symbol];
-    
     if (!currentPrice) {
       return res.status(400).json({ error: "No current price available" });
     }
-
-
     let finalValue = 0;
     let pnl = 0;
-    
     if (order.type === "buy") {
-      finalValue = order.quantity * currentPrice;
-    } else {
-      finalValue = order.order_amount + (order.entry_price - currentPrice) * order.quantity;
-    }  
+  finalValue = order.quantity * currentPrice;
+} else {
+  finalValue = (order.entry_price - currentPrice) * order.quantity;
+}
 
-    pnl = finalValue - order.order_amount;
+pnl = finalValue; 
+if (order.type === "buy") {
+  pnl = finalValue - order.order_amount;
+}
+let balanceIncrease = order.type === "buy" ? finalValue : finalValue + order.order_amount;
+await pool.query(
+  "UPDATE users SET balance = balance + $1 WHERE id=$2",
+  [balanceIncrease, user.id]
+);
     await pool.query("UPDATE orders SET status='manually_closed', exit_price=$1, pnl=$2 WHERE id=$3", [currentPrice, pnl, orderId]);
-    await pool.query("UPDATE users SET balance = balance + $1 WHERE id=$2", [finalValue, user.id]);
-    
     res.json({ message: "Order closed successfully", pnl, finalValue });
   } catch (err) {
     console.error(err);
