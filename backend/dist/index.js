@@ -5,6 +5,8 @@ const WebSocket = require("ws");
 const pg = require("pg");
 const Redis = require("ioredis");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 const { Pool } = pg;
 const app = express();
 app.use(express.json());
@@ -27,10 +29,9 @@ wss.on("connection", (ws) => {
         console.log("Client disconnected");
         const idx = clients.indexOf(ws);
         if (idx !== -1)
-            clients.splice(idx, 1); // push the clients to the ws
+            clients.splice(idx, 1);
     });
 });
-// subbb buddy
 // @ts-ignore
 redisSubscriber.subscribe("trades", (err, count) => {
     if (err)

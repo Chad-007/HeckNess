@@ -3,16 +3,17 @@
   import pg = require("pg");
   import Redis = require("ioredis");
   import cors = require("cors")
-
+  import jwt = require("jsonwebtoken");
+  import bcrypt = require("bcrypt")
+  
   const { Pool } = pg;
   const app = express();
   app.use(express.json());
   app.use(cors())
 
-  
+
   // @ts-ignore
   const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
-
   const pool = new Pool({
     user: "alan",
     host: "127.0.0.1",
@@ -20,8 +21,6 @@
     password: "alanpass",
     port: 5433,
   });
-
-
   const wss = new WebSocket.Server({ port: 3006 });
   const clients: WebSocket[] = [];  
   wss.on("connection", (ws) => {
@@ -30,11 +29,9 @@
     ws.on("close", () => {
       console.log("Client disconnected");
       const idx = clients.indexOf(ws);
-      if (idx !== -1) clients.splice(idx, 1); // push the clients to the ws
+      if (idx !== -1) clients.splice(idx, 1); 
     });
   });
-
-  // subbb buddy
   // @ts-ignore
   redisSubscriber.subscribe("trades", (err, count) => {
     if (err) console.error("Redis subscribe failed:", err);
@@ -85,4 +82,5 @@
       res.status(500).send("error");
     }
   });
+
 app.listen(3000);
