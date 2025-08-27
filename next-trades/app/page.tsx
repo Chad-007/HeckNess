@@ -39,7 +39,6 @@ interface ActiveOrder {
 
 const intervals = ["1 minute", "5 minutes", "10 minutes", "30 minutes"];
 const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
-
 const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
   const chartData = useMemo(
     () =>
@@ -54,7 +53,6 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
       })),
     [candles]
   );
-
   const options: ApexOptions = {
     chart: { 
       type: "candlestick", 
@@ -119,14 +117,10 @@ export default function HomePage() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [orderHistory, setOrderHistory] = useState<ActiveOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const router = useRouter();
-
-  // Helper function to convert string/number to number
+  const router = useRouter();  
   const toNumber = (value: string | number): number => {
     return typeof value === 'string' ? parseFloat(value) : value;
   };
-
-  // Calculate current portfolio value (cash + position values)
   const calculatePortfolioValue = () => {
     let positionValue = 0;
     activeOrders.forEach(order => {
@@ -139,15 +133,15 @@ export default function HomePage() {
         if (order.type === "buy") {
           positionValue += quantity * currentPrice;
         } else {
+          // i think this logic will work
+         // ie if 150 $ orderamount then entry price  = 100 current price = 50 quantity  = 1 then  150+(100-50)*1 = 200 so i have a profit here
           positionValue += orderAmount + (entryPrice - currentPrice) * quantity;
         }
       }
     });
     return cashBalance + positionValue;
   };
-
   const totalPortfolioValue = calculatePortfolioValue();
-
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -253,12 +247,10 @@ export default function HomePage() {
       alert("Error placing order");
     }
   };
-
   const calculateOrderPnL = (order: ActiveOrder, currentPrice: number) => {
     const entryPrice = toNumber(order.entry_price);
     const quantity = toNumber(order.quantity);
     const orderAmount = toNumber(order.order_amount);
-    
     let currentValue: number;
     if (order.type === "buy") {
       currentValue = quantity * currentPrice;
@@ -269,7 +261,6 @@ export default function HomePage() {
     const pnlPercent = (pnl / orderAmount) * 100;
     return { pnl, pnlPercent, currentValue };
   };
-
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3006");
     ws.onmessage = (event) => {
@@ -309,7 +300,7 @@ export default function HomePage() {
       fontFamily: '"Inter", "Helvetica", "Arial", sans-serif',
       background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
     }}>
-      {/* Header */}
+
       <div className="border-b border-gray-700 p-8" style={{
         background: 'rgba(0, 0, 0, 0.95)',
         backdropFilter: 'blur(10px)',
@@ -369,14 +360,14 @@ export default function HomePage() {
           </div>
         </div>
       </div>
-      {/* Main Content */}
+      
       <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Chart */}
+        
         <div className="lg:col-span-3">
           <CandlestickChart candles={candles} />
         </div>
         
-        {/* Trading Panel */}
+        
         <div className="bg-black border border-gray-800 rounded p-6">
           <h3 className="text-lg font-light mb-6 text-center uppercase tracking-widest text-white">Trade {symbol}</h3>
           
@@ -410,6 +401,7 @@ export default function HomePage() {
               <div className="text-xs text-gray-500 uppercase tracking-wide">
                 Price: <span className="text-white">${prices[symbol]?.toFixed(2) || "0.00"}</span>
               </div>
+              {/* divide the current orderamount with the price of the current then you get the quantity of what you bought*/}
               <div className="text-xs text-gray-500 uppercase tracking-wide">
                 Quantity: <span className="text-white">{prices[symbol] ? (orderAmount / prices[symbol]).toFixed(6) : "0.000000"}</span>
               </div>
