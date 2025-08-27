@@ -110,6 +110,7 @@ export default function HomePage() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [interval, setIntervalState] = useState("1 minute");
   const [symbol, setSymbol] = useState("BTCUSDT");
+  // the prices state is a single map
   const [prices, setPrices] = useState<Record<string, number>>({ BTCUSDT: 0, ETHUSDT: 0, SOLUSDT: 0 });
   const [orderAmount, setOrderAmount] = useState<number>(100);
   const [cashBalance, setCashBalance] = useState<number>(0);
@@ -152,7 +153,7 @@ export default function HomePage() {
       fetchOrderHistory();
     }
   }, [router]);
-
+  
   const fetchOrders = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -229,7 +230,6 @@ export default function HomePage() {
   const placeOrder = async (type: "buy" | "sell") => {
     if (!orderAmount || orderAmount <= 0) return alert("Enter valid amount");
     if (cashBalance < orderAmount) return alert("Insufficient balance");
-
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("http://localhost:3005/placeorder", {
@@ -261,6 +261,8 @@ export default function HomePage() {
     const pnlPercent = (pnl / orderAmount) * 100;
     return { pnl, pnlPercent, currentValue };
   };
+
+
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3006");
     ws.onmessage = (event) => {
@@ -294,7 +296,8 @@ export default function HomePage() {
     
     return () => clearInterval(refreshInterval);
   }, []);
-
+  // im giving a leverage here so im multiplying
+  const leverage = 5;
   return (
     <div className="min-h-screen text-white" style={{ 
       fontFamily: '"Inter", "Helvetica", "Arial", sans-serif',
@@ -360,14 +363,10 @@ export default function HomePage() {
           </div>
         </div>
       </div>
-      
       <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-        
         <div className="lg:col-span-3">
           <CandlestickChart candles={candles} />
         </div>
-        
-        
         <div className="bg-black border border-gray-800 rounded p-6">
           <h3 className="text-lg font-light mb-6 text-center uppercase tracking-widest text-white">Trade {symbol}</h3>
           
@@ -376,7 +375,7 @@ export default function HomePage() {
               <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Amount ($)</label>
               <input
                 type="number"
-                value={orderAmount}
+                value={orderAmount * leverage}
                 onChange={(e) => setOrderAmount(parseFloat(e.target.value))}
                 className="w-full bg-transparent text-white border-b border-gray-700 py-3 outline-none focus:border-white transition-colors text-lg"
                 style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
