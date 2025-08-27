@@ -30,6 +30,7 @@ wss.on("connection", (ws) => {
             clients.splice(idx, 1); // push the clients to the ws
     });
 });
+// subbb buddy
 // @ts-ignore
 redisSubscriber.subscribe("trades", (err, count) => {
     if (err)
@@ -42,7 +43,7 @@ redisSubscriber.on("message", async (_chafromnnel, message) => {
     const trade = JSON.parse(message);
     console.log("trades received with redis", trade);
     try {
-        await pool.query(`INSERT INTO trades (trade_id, symbol, price, quantity, side, trade_time)
+        await pool.query(`INSERT INTO trades1 (trade_id, symbol, price, quantity, side, trade_time)
     VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT (trade_id, trade_time) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
     }
@@ -57,7 +58,7 @@ redisSubscriber.on("message", async (_chafromnnel, message) => {
 app.get("/trades", async (req, res) => {
     const { start, end } = req.query;
     try {
-        const result = await pool.query(`SELECT * FROM trades WHERE trade_time BETWEEN $1 AND $2 ORDER BY trade_time DESC`, [start, end]);
+        const result = await pool.query(`SELECT * FROM trades1 WHERE trade_time BETWEEN $1 AND $2 ORDER BY trade_time DESC`, [start, end]);
         res.json(result.rows);
     }
     catch (err) {
@@ -68,10 +69,10 @@ app.get("/trades", async (req, res) => {
 app.get("/candles", async (req, res) => {
     const { interval = "30 seconds", duration = "1 hour" } = req.query;
     const viewMap = {
-        "30 seconds": "trades_30s",
-        "5 minutes": "trades_5m",
-        "10 minutes": "trades_10m",
-        "30 minutes": "trades_30m",
+        "1 minute": "trades1_1m",
+        "5 minutes": "trades1_5m",
+        "10 minutes": "trades1_10m",
+        "30 minutes": "trades1_30m",
     };
     const view = viewMap[interval];
     if (!view)
