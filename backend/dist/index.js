@@ -45,7 +45,7 @@ redisSubscriber.on("message", async (_chafromnnel, message) => {
     try {
         await pool.query(`INSERT INTO trades1 (trade_id, symbol, price, quantity, side, trade_time)
     VALUES ($1, $2, $3, $4, $5, $6)
-    ON CONFLICT (trade_id, trade_time) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
+    ON CONFLICT (symbol, trade_id, trade_time) DO NOTHING`, [trade.t, trade.s, parseFloat(trade.p), parseFloat(trade.q), trade.m ? "sell" : "buy", new Date(trade.T)]);
     }
     catch (err) {
         console.error(err);

@@ -51,7 +51,7 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
     xaxis: { type: "datetime" as const, labels: { style: { colors: "#9ca3af", fontSize: "11px" }, format: "HH:mm" }, axisBorder: { show: false }, axisTicks: { show: false } },
     yaxis: { tooltip: { enabled: true }, labels: { style: { colors: "#9ca3af", fontSize: "11px" }, formatter: (v: number) => `$${v.toFixed(2)}` } },
     plotOptions: { candlestick: { colors: { upward: "#00d4aa", downward: "#ff4560" }, wick: { useFillColor: true } } },
-    tooltip: { theme: "dark", custom: ({ seriesIndex, dataPointIndex, w }: any) => {
+    tooltip: { theme: "dark", custom: ({ seriesIndex, dataPointIndex, w }: { seriesIndex: number; dataPointIndex: number; w: { globals: { seriesCandleO: number[][]; seriesCandleH: number[][]; seriesCandleL: number[][]; seriesCandleC: number[][]; seriesX: number[][] } } }) => {
       const o = w.globals.seriesCandleO[seriesIndex][dataPointIndex];
       const h = w.globals.seriesCandleH[seriesIndex][dataPointIndex];
       const l = w.globals.seriesCandleL[seriesIndex][dataPointIndex];
@@ -118,7 +118,7 @@ export default function HomePage() {
     try {
       const res = await fetch(`http://localhost:3000/candles?interval=${encodeURIComponent(interval)}&duration=1 hour`);
       const data = await res.json();
-      setCandles(data.filter((c: Candle) => c.symbol === symbol));
+      setCandles(data.filter((c: Candle) => c.symbol === symbol)); // filter based on the symbol
     } catch (err) {
       console.error(err);
     }

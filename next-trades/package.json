@@ -11,7 +11,9 @@
   "dependencies": {
     "@types/axios": "^0.14.4",
     "@types/cors": "^2.8.19",
+    "@types/recharts": "^2.0.1",
     "apexcharts": "^5.3.4",
+    "lucide-react": "^0.542.0",
     "next": "15.5.0",
     "react": "19.1.0",
     "react-apexcharts": "^1.7.0",
