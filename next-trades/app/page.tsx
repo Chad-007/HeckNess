@@ -166,15 +166,6 @@ export default function HomePage() {
     const intervalId = setInterval(fetchCandles, 60 * 1000);
     return () => clearInterval(intervalId);
   }, [fetchCandles]);
-  const priceChange = useMemo(() => {
-    if (candles.length < 2) return { change: 0, percentage: 0 };
-    const latest = parseFloat(candles[candles.length - 1]?.close_price || "0");
-    const previous = parseFloat(candles[candles.length - 2]?.close_price || "0");
-    const change = latest - previous;
-    const percentage = (change / previous) * 100;
-    return { change, percentage };
-  }, [candles]);
-
   const getSpread = (price: number) => ({ ask: price * 1.05, bid: price * 0.95 });
   return (
     <div className="min-h-screen bg-white">
@@ -195,6 +186,9 @@ export default function HomePage() {
             <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-800 text-sm focus:outline-none focus:border-gray-400">
               {symbols.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            <div className="text-sm text-gray-600">
+              Balance: ${balance.USD?.toFixed(2) || '0.00'}
+            </div>
             <select value={interval} onChange={(e) => setIntervalState(e.target.value)} className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-800 text-sm focus:outline-none focus:border-gray-400">
               {intervals.map(i => <option key={i} value={i}>{i}</option>)}
             </select>
