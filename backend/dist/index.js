@@ -55,17 +55,19 @@ redisSubscriber.on("message", async (_chafromnnel, message) => {
             ws.send(JSON.stringify(trade));
     });
 });
-app.get("/trades", async (req, res) => {
-    const { start, end } = req.query;
-    try {
-        const result = await pool.query(`SELECT * FROM trades1 WHERE trade_time BETWEEN $1 AND $2 ORDER BY trade_time DESC`, [start, end]);
-        res.json(result.rows);
-    }
-    catch (err) {
-        console.error(err);
-        res.status(500).send("error");
-    }
-});
+// app.get("/trades", async (req, res) => {
+//   const { start, end } = req.query;
+//   try {
+//     const result = await pool.query(
+//       `SELECT * FROM trades1 WHERE trade_time BETWEEN $1 AND $2 ORDER BY trade_time DESC`,
+//       [start, end]
+//     );
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).send("error");
+//   }
+// });
 app.get("/candles", async (req, res) => {
     const { interval = "30 seconds", duration = "1 hour" } = req.query;
     const viewMap = {
