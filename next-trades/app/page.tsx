@@ -188,9 +188,6 @@ export default function HomePage() {
               <h1 className="text-xl font-semibold text-gray-800">{symbol}</h1>
               <div className="flex items-center space-x-3">
                 <span className="text-lg font-mono text-gray-800">${prices[symbol].toFixed(2)}</span>
-                <span className={`text-xs px-2 py-1 rounded ${priceChange.change >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                  {priceChange.change >= 0 ? '+' : ''}{priceChange.change.toFixed(2)} ({priceChange.percentage.toFixed(2)}%)
-                </span>
               </div>
             </div>
           </div>
