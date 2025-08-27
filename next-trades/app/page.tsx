@@ -2,9 +2,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
-
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
-
 interface Trade {
   p: string;
   q: string;
@@ -12,7 +10,6 @@ interface Trade {
   T: number;
   s: string;
 }
-
 interface Candle {
   bucket: string;
   symbol: string;
@@ -22,10 +19,8 @@ interface Candle {
   close_price: string;
   volume: string;
 }
-
 const intervals = ["1 minute", "5 minutes", "10 minutes", "30 minutes"];
 const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
-
 const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
   const chartData = useMemo(
     () =>
@@ -40,16 +35,6 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
       })),
     [candles]
   );
-
-  const volumeData = useMemo(
-    () =>
-      candles.map((c) => ({
-        x: new Date(c.bucket).getTime(),
-        y: parseFloat(c.volume),
-      })),
-    [candles]
-  );
-
   const options: ApexOptions = {
     chart: {
       type: "candlestick",
@@ -104,18 +89,6 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
       },
     },
   };
-
-  const volumeOptions: ApexOptions = {
-    chart: { type: "bar", height: 120, background: "#ffffff", toolbar: { show: false } },
-    theme: { mode: "light" },
-    grid: { borderColor: "#e5e7eb", strokeDashArray: 0, show: false },
-    xaxis: { type: "datetime", labels: { show: false }, axisBorder: { show: false }, axisTicks: { show: false } },
-    yaxis: { labels: { formatter: (v: number) => v.toFixed(2), style: { colors: "#374151", fontSize: "10px" } } },
-    plotOptions: { bar: { colors: { ranges: [{ from: 0, to: 999999, color: "#9ca3af" }] } } },
-    dataLabels: { enabled: false },
-    tooltip: { y: { formatter: (v: number) => `${v.toFixed(4)} BTC` } },
-  };
-
   return (
     <div className="bg-white rounded-lg border border-gray-200">
       <div className="p-4 border-b border-gray-200">
@@ -123,20 +96,53 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
       </div>
       <div className="p-4">
         <Chart options={options} series={[{ data: chartData }]} type="candlestick" height={400} />
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-sm text-gray-500 mb-2">Volume</div>
-          <Chart options={volumeOptions} series={[{ name: "Volume", data: volumeData }]} type="bar" height={120} />
-        </div>
       </div>
     </div>
   );
 };
-
 export default function HomePage() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [interval, setIntervalState] = useState("1 minute");
-  const [symbol, setSymbol] = useState("BTCUSDT");
+  const [symbol, setSymbol] = useState("BTCUSDT"); 
   const [prices, setPrices] = useState<Record<string, number>>({ BTCUSDT: 0, ETHUSDT: 0, SOLUSDT: 0 });
+  const [activeSymbol, setActiveSymbol] = useState<string | null>(null);
+  const [orderAmount, setOrderAmount] = useState<number>(0);
+  const [balance, setBalance] = useState<Record<string, number>>({ USD: 10000 }); 
+  const [holdings, setHoldings] = useState<Record<string, number>>({ BTCUSDT: 0, ETHUSDT: 0, SOLUSDT: 0 });
+
+  const placeOrder = (type: "buy" | "sell", symbol: string) => {
+  const { ask, bid } = getSpread(prices[symbol]);
+  
+  if (orderAmount <= 0) {
+    alert("Enter a valid amount in ₹");
+    return;
+  }
+
+  if (type === "buy") {
+    const pricePerUnit = ask;
+    const quantity = orderAmount / pricePerUnit; 
+    if (orderAmount > (balance.USD || 0)) {
+      alert(`Insufficient funds! You have ₹${balance.USD.toFixed(2)}`);
+      return;
+    }
+    setBalance(prev => ({ ...prev, USD: prev.USD - orderAmount }));
+    setHoldings(prev => ({ ...prev, [symbol]: (prev[symbol] || 0) + quantity }));
+    alert(`Bought ${quantity.toFixed(6)} ${symbol} for ₹${orderAmount.toFixed(2)} at $${pricePerUnit.toFixed(2)}`);
+  } else {
+    const pricePerUnit = bid;
+    const quantity = orderAmount / pricePerUnit;
+    if ((holdings[symbol] || 0) < quantity) {
+      alert(`Insufficient ${symbol} holdings! You have ${(holdings[symbol] || 0).toFixed(6)} units`);
+      return;
+    }
+    setBalance(prev => ({ ...prev, USD: prev.USD + orderAmount }));
+    setHoldings(prev => ({ ...prev, [symbol]: prev[symbol] - quantity }));
+    alert(`Sold ${quantity.toFixed(6)} ${symbol} for ₹${orderAmount.toFixed(2)} at $${pricePerUnit.toFixed(2)}`);
+  }
+
+  setOrderAmount(0);
+  setActiveSymbol(null);
+};
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3006");
@@ -146,7 +152,6 @@ export default function HomePage() {
     };
     return () => ws.close();
   }, []);
-
   const fetchCandles = useCallback(async () => {
     try {
       const res = await fetch(`http://localhost:3000/candles?interval=${encodeURIComponent(interval)}&duration=1 hour`);
@@ -156,13 +161,11 @@ export default function HomePage() {
       console.error(err);
     }
   }, [interval, symbol]);
-
   useEffect(() => {
     fetchCandles();
     const intervalId = setInterval(fetchCandles, 60 * 1000);
     return () => clearInterval(intervalId);
   }, [fetchCandles]);
-
   const priceChange = useMemo(() => {
     if (candles.length < 2) return { change: 0, percentage: 0 };
     const latest = parseFloat(candles[candles.length - 1]?.close_price || "0");
@@ -173,10 +176,8 @@ export default function HomePage() {
   }, [candles]);
 
   const getSpread = (price: number) => ({ ask: price * 1.05, bid: price * 0.95 });
-
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
       <div className="bg-gray-100 border-b border-gray-300 px-6 py-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center space-x-4">
@@ -203,33 +204,61 @@ export default function HomePage() {
           </div>
         </div>
       </div>
-
-      {/* Main Content */}
+      
       <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3">
           <CandlestickChart candles={candles} />
         </div>
-
-        {/* Spread Section */}
         <div className="space-y-6">
           {symbols.map(s => {
             const { ask, bid } = getSpread(prices[s]);
             return (
-              <div key={s} className="bg-gray-50 rounded-lg border border-gray-200 p-4 shadow">
-                <h3 className="text-sm font-medium text-gray-600 mb-2">{s} Spread</h3>
-                <div className="flex justify-between mb-1">
-                  <span className="text-gray-500">Bid:</span>
-                  <span className="text-green-600 font-mono">${bid.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Ask:</span>
-                  <span className="text-red-600 font-mono">${ask.toFixed(2)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+              <div key={s} className="bg-gray-50 rounded-lg border border-gray-200 p-4 shadow cursor-pointer"
+     onClick={() => setActiveSymbol(activeSymbol === s ? null : s)}>
+  <h3 className="text-sm font-medium text-gray-600 mb-2">{s} Spread</h3>
+  <div className="flex justify-between mb-1">
+    <span className="text-gray-500">Bid:</span>
+    <span className="text-green-600 font-mono">${bid.toFixed(2)}</span>
+  </div>
+  <div className="flex justify-between">
+    <span className="text-gray-500">Ask:</span>
+    <span className="text-red-600 font-mono">${ask.toFixed(2)}</span>
+  </div>
+
+  {activeSymbol === s && (
+  <div
+    className="mt-4 space-y-2 border-t border-gray-200 pt-2"
+    onClick={(e) => e.stopPropagation()} 
+  >
+    <input
+  type="number"
+  value={orderAmount}
+  onChange={(e) => setOrderAmount(parseFloat(e.target.value))}
+  placeholder="Amount"
+  className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-black"
+/>
+
+    <div className="flex space-x-2">
+      <button
+        className="flex-1 bg-green-500 text-white rounded py-1 text-sm hover:bg-green-600"
+        onClick={() => placeOrder("buy", s)}
+      >
+        Buy
+      </button>
+      <button
+        className="flex-1 bg-red-500 text-white rounded py-1 text-sm hover:bg-red-600"
+        onClick={() => placeOrder("sell", s)}
+      >
+        Sell
+      </button>
     </div>
-  );
+  </div>
+)}
+</div>
+);
+})}
+</div>
+</div>
+</div>
+);
 }
