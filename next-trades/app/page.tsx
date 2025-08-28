@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
+import { UserStar } from "lucide-react";
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 interface Trade {
@@ -120,6 +121,8 @@ export default function HomePage() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [orderHistory, setOrderHistory] = useState<ActiveOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [tpPrice,settpprice] = useState<number>(0);
+  const [slPrice,setslprice] = useState<number>(0);
   const router = useRouter();  
   
   const toNumber = (value: string | number): number => {
@@ -242,7 +245,7 @@ export default function HomePage() {
       const res = await fetch("http://localhost:3005/placeorder", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ symbol, type, orderAmount, leverage }), 
+        body: JSON.stringify({ symbol, type, orderAmount, leverage ,tpPrice,slPrice}), 
       });
       if (!res.ok) throw new Error("Order failed");
       
@@ -397,6 +400,32 @@ export default function HomePage() {
                 type="number"
                 value={leverage}
                 onChange={(e) => setLeverage(parseFloat(e.target.value))}
+                min="1"
+                max="20"
+                step="0.5"
+                className="w-full bg-transparent text-white border-b border-gray-700 py-3 outline-none focus:border-white transition-colors text-lg"
+                style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">take profit price</label>
+              <input
+                type="number"
+                value={tpPrice}
+                onChange={(e) => settpprice(parseFloat(e.target.value))}
+                min="1"
+                max="20"
+                step="0.5"
+                className="w-full bg-transparent text-white border-b border-gray-700 py-3 outline-none focus:border-white transition-colors text-lg"
+                style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">stop loss price</label>
+              <input
+                type="number"
+                value={slPrice}
+                onChange={(e) => setslprice(parseFloat(e.target.value))}
                 min="1"
                 max="20"
                 step="0.5"

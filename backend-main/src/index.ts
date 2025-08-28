@@ -73,7 +73,7 @@ app.post("/login", async (req, res) => {
 });
 
 app.post("/placeorder", authMiddleware, async (req: any, res: any) => {
-  const { symbol, type, orderAmount, leverage } = req.body;
+  const { symbol, type, orderAmount, leverage ,tpPrice,slPrice} = req.body;
   const user = req.user;
 
   try {
@@ -93,8 +93,8 @@ app.post("/placeorder", authMiddleware, async (req: any, res: any) => {
     const positionSize = margin * lev;
     const quantity = positionSize / entryPrice;
     await pool.query("UPDATE users SET balance = balance - $1 WHERE id = $2", [margin, user.id]);
-    const tpPrice = type === "buy" ? entryPrice+10: entryPrice -10; 
-    const slPrice = type === "buy" ? entryPrice-10 : entryPrice +10;
+    // const tpPrice = type === "buy" ? entryPrice+10: entryPrice -10; 
+    // const slPrice = type === "buy" ? entryPrice-10 : entryPrice +10;
     const orderRes = await pool.query(
       `INSERT INTO orders 
        (user_id, symbol, type, entry_price, quantity, order_amount, take_profit_price, stop_loss_price, leverage, status)
