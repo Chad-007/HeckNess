@@ -17,10 +17,10 @@ const pool = new Pool({
   port: 5433,
 });
 
-
 const latestPrices: Record<string, number> = {};
 //@ts-ignore
 const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
+
 function authMiddleware(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
   if (!authHeader) return res.status(401).json({ error: "No token" });
@@ -33,6 +33,7 @@ function authMiddleware(req: any, res: any, next: any) {
     return res.status(403).json({ error: "Invalid token" });
   }
 }
+
 app.post("/signup", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -51,6 +52,7 @@ app.post("/signup", async (req, res) => {
     res.status(500).json({ error: "Signup failed" });
   }
 });
+
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -70,45 +72,46 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ error: "Login failed" });
   }
 });
+
 app.post("/placeorder", authMiddleware, async (req: any, res: any) => {
-  const { symbol, type, orderAmount, marginPercent } = req.body;
+  const { symbol, type, orderAmount, leverage } = req.body;
   const user = req.user;
+
   try {
+    const margin = parseFloat(orderAmount);
+    const lev = parseFloat(leverage);
+    if (!symbol || !type || isNaN(margin) || isNaN(lev) || margin <= 0 || lev <= 0) {
+      return res.status(400).json({ error: "Invalid input" });
+    }
+
     const userRes = await pool.query("SELECT balance FROM users WHERE id=$1", [user.id]);
     const balance = parseFloat(userRes.rows[0].balance);
+    if (balance < margin) return res.status(400).json({ error: "Insufficient balance" });
 
-    if (balance < orderAmount) {
-      return res.status(400).json({ error: "Insufficient balance" });
-    }
-    const marketPrice = latestPrices[symbol];
-    if (!marketPrice) {
-      return res.status(400).json({ error: "No market price available for " + symbol });
-    }
-    const entryPrice = marketPrice; // Use exact market price
-    const quantity = orderAmount / entryPrice;
-    await pool.query("UPDATE users SET balance=balance-$1 WHERE id=$2", [orderAmount, user.id]);
-    const marginDecimal = marginPercent / 100;
-    let tp, sl;
-    if (type === "buy") {
-      tp = entryPrice * (1 + marginDecimal);
-      sl = entryPrice * (1 - marginDecimal);
-    } else {
-      tp = entryPrice * (1 - marginDecimal);
-      sl = entryPrice * (1 + marginDecimal);
-    }
+    const entryPrice = latestPrices[symbol];
+    if (!entryPrice || !isFinite(entryPrice)) return res.status(400).json({ error: "No market price available" });
+
+    const positionSize = margin * lev;
+    const quantity = positionSize / entryPrice;
+    await pool.query("UPDATE users SET balance = balance - $1 WHERE id = $2", [margin, user.id]);
+    const tpPrice = type === "buy" ? entryPrice+10: entryPrice -10; 
+    const slPrice = type === "buy" ? entryPrice-10 : entryPrice +10;
     const orderRes = await pool.query(
       `INSERT INTO orders 
-       (user_id, symbol, type, entry_price, quantity, order_amount, take_profit_price, stop_loss_price, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active')
+       (user_id, symbol, type, entry_price, quantity, order_amount, take_profit_price, stop_loss_price, leverage, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
-      [user.id, symbol, type, entryPrice, quantity, orderAmount, tp, sl]
+      [user.id, symbol, type, entryPrice, quantity, margin, tpPrice, slPrice, lev, "active"]
     );
+
+    console.log(`Order placed: ${type} ${symbol} at ${entryPrice}, TP: ${tpPrice}, SL: ${slPrice}`);
     res.json(orderRes.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to place order" });
+    res.status(500).json({ error: "failed to place the order" });
   }
 });
+
 app.get("/orders", authMiddleware, async (req: any, res: any) => {
   const user = req.user;
   try {
@@ -122,23 +125,24 @@ app.get("/orders", authMiddleware, async (req: any, res: any) => {
     res.status(500).json({ error: "Failed to fetch orders" });
   }
 });
+
 app.get("/balance", authMiddleware, async (req: any, res: any) => {
   const user = req.user;
   try {
     const userRes = await pool.query("SELECT balance FROM users WHERE id=$1", [user.id]);
-    res.json({ balance: userRes.rows[0].balance });
+    const balance = parseFloat(userRes.rows[0].balance); 
+    res.json({ balance });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch balance" });
   }
 });
 
-
 app.get("/order-history", authMiddleware, async (req: any, res: any) => {
   const user = req.user;
   try {
     const ordersRes = await pool.query(
-      "SELECT * FROM orders WHERE user_id=$1 AND status IN ('take_profit', 'stop_loss', 'expired_executed', 'manually_closed') ORDER BY created_at DESC LIMIT 50",
+      "SELECT * FROM orders WHERE user_id=$1 AND status IN ('take_profit', 'stop_loss', 'expired_executed', 'manually_closed', 'liquidated') ORDER BY created_at DESC LIMIT 50",
       [user.id]
     );
     res.json(ordersRes.rows);
@@ -147,9 +151,6 @@ app.get("/order-history", authMiddleware, async (req: any, res: any) => {
     res.status(500).json({ error: "Failed to fetch order history" });
   }
 });
-
-
-
 
 app.post("/close-order", authMiddleware, async (req: any, res: any) => {
   const { orderId } = req.body;
@@ -162,103 +163,129 @@ app.post("/close-order", authMiddleware, async (req: any, res: any) => {
     if (orderRes.rows.length === 0) {
       return res.status(404).json({ error: "Order not found or already closed" });
     }
+    
     const order = orderRes.rows[0];
+    const margin = parseFloat(order.order_amount);
+    const entryPrice = parseFloat(order.entry_price);
+    const quantity = parseFloat(order.quantity);
     const currentPrice = latestPrices[order.symbol];
+    
     if (!currentPrice) {
       return res.status(400).json({ error: "No current price available" });
     }
-    let finalValue = 0;
+
     let pnl = 0;
     if (order.type === "buy") {
-  finalValue = order.quantity * currentPrice;
-} else {
-  finalValue = (order.entry_price - currentPrice) * order.quantity;
-}
+      pnl = (currentPrice - entryPrice) * quantity;
+    } else {
+      pnl = (entryPrice - currentPrice) * quantity;
+    }
 
-pnl = finalValue; 
-if (order.type === "buy") {
-  pnl = finalValue - order.order_amount;
-}
-let balanceIncrease = order.type === "buy" ? finalValue : finalValue + order.order_amount;
-await pool.query(
-  "UPDATE users SET balance = balance + $1 WHERE id=$2",
-  [balanceIncrease, user.id]
-);
+    const returnToBalance = margin + pnl;
+    const finalReturn = Math.max(0, returnToBalance);
+
+    await pool.query("UPDATE users SET balance = balance + $1 WHERE id=$2", [finalReturn, user.id]);
     await pool.query("UPDATE orders SET status='manually_closed', exit_price=$1, pnl=$2 WHERE id=$3", [currentPrice, pnl, orderId]);
-    res.json({ message: "Order closed successfully", pnl, finalValue });
+    
+    res.json({ message: "Order closed successfully", pnl, finalValue: finalReturn });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to close order" });
   }
 });
 
-
-
 //@ts-ignore
 redisSubscriber.subscribe("trades", (err, count) => {
   if (err) console.error("Redis subscribe failed:", err);
   else console.log(`Subscribed to ${count} channel(s).`);
 });
+
 //@ts-ignore
 redisSubscriber.on("message", async (_channel, message) => {
   const trade = JSON.parse(message);
   const price = parseFloat(trade.p);
   const symbol = trade.s;
+  if (!isFinite(price)) return;
   latestPrices[symbol] = price;
-  
+
   try {
-    
-    const ordersRes = await pool.query(
-      "SELECT * FROM orders WHERE symbol=$1 AND status='active'",
-      [symbol]
-    );
-    
+    const ordersRes = await pool.query("SELECT * FROM orders WHERE symbol=$1 AND status='active'", [symbol]);
+
     for (const order of ordersRes.rows) {
-      let shouldClose = false;
-      let pnl = 0;
-      let exitPrice = price;
-      let closeReason = '';
       const entryPrice = parseFloat(order.entry_price);
-      const takeProfitPrice = parseFloat(order.take_profit_price);
-      const stopLossPrice = parseFloat(order.stop_loss_price);
-      const orderAmount = parseFloat(order.order_amount);
+      const tpPrice = parseFloat(order.take_profit_price);
+      const slPrice = parseFloat(order.stop_loss_price);
+      const margin = parseFloat(order.order_amount);
       const quantity = parseFloat(order.quantity);
-      
+      const leverage = parseFloat(order.leverage);
+
+      if (![entryPrice, tpPrice, slPrice, margin, quantity, leverage].every(isFinite)) {
+        console.warn("Skipping order due to invalid numeric fields:", order.id);
+        continue;
+      }
+
+      let shouldClose = false;
+      let closeReason = "";
+      let exitPrice = price;
+      let pnl = 0;
       if (order.type === "buy") {
-        if (price >= takeProfitPrice) {
-          shouldClose = true;
-          closeReason = 'take_profit';
-          exitPrice = takeProfitPrice;
-          pnl = (takeProfitPrice - entryPrice) * quantity;
-        } else if (price <= stopLossPrice) {
-          shouldClose = true;
-          closeReason = 'stop_loss';
-          exitPrice = stopLossPrice;
-          pnl = (stopLossPrice - entryPrice) * quantity;
-        }
+        pnl = (price - entryPrice) * quantity;
       } else {
-        if (price <= takeProfitPrice) {
+        pnl = (entryPrice - price) * quantity;
+      }
+      const liquidationThreshold = 0.9 * margin;
+      if (pnl <= -liquidationThreshold) {
+        shouldClose = true;
+        closeReason = "liquidated";
+        exitPrice = price;
+      }
+      else if (order.type === "buy") {
+        if (price >= tpPrice) {
           shouldClose = true;
-          closeReason = 'take_profit';
-          exitPrice = takeProfitPrice;
-          pnl = (entryPrice - takeProfitPrice) * quantity;
-        } else if (price >= stopLossPrice) {
+          closeReason = "take_profit";
+          exitPrice = price;
+        } else if (price <= slPrice) {
           shouldClose = true;
-          closeReason = 'stop_loss';
-          exitPrice = stopLossPrice;
-          pnl = (entryPrice - stopLossPrice) * quantity;
+          closeReason = "stop_loss";
+          exitPrice = price;
+        }
+      } else { 
+        if (price <= tpPrice) {
+          shouldClose = true;
+          closeReason = "take_profit";
+          exitPrice = price;
+        } else if (price >= slPrice) {
+          shouldClose = true;
+          closeReason = "stop_loss";
+          exitPrice = price;
         }
       }
-      
-      if (shouldClose) {
-        const finalBalance = orderAmount + pnl;
-        await pool.query("UPDATE orders SET status=$1, exit_price=$2, pnl=$3 WHERE id=$4", [closeReason, exitPrice, pnl, order.id]);
-        await pool.query("UPDATE users SET balance = balance + $1 WHERE id=$2", [finalBalance, order.user_id]);
-        console.log(`Order ${order.id} closed via ${closeReason}. Entry: ${entryPrice}, Exit: ${exitPrice}, PnL: ${pnl}, Final Balance Added: ${finalBalance}`);
+      if (!shouldClose) continue;
+      if (order.type === "buy") {
+        pnl = (exitPrice - entryPrice) * quantity;
+      } else {
+        pnl = (entryPrice - exitPrice) * quantity;
       }
+
+      const returnToBalance = margin + pnl;
+      const finalReturn = returnToBalance
+      const upd = await pool.query(
+        "UPDATE orders SET status=$1, exit_price=$2, pnl=$3 WHERE id=$4 AND status='active' RETURNING id",
+        [closeReason, exitPrice, pnl, order.id]
+      );
+      if (upd.rowCount === 0) {
+        continue;
+      }
+
+      await pool.query("UPDATE users SET balance = balance + $1 WHERE id=$2", [finalReturn, order.user_id]);
+
+      console.log(
+        `Order ${order.id} closed via ${closeReason}. Entry: ${entryPrice}, Exit: ${exitPrice}, PnL: ${pnl.toFixed(6)}, Returned: ${finalReturn.toFixed(6)}`
+      );
     }
   } catch (err) {
     console.error("Error in trade execution:", err);
   }
 });
+
 app.listen(3005, () => console.log("Backend running on port 3005"));

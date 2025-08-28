@@ -38,7 +38,6 @@
     else console.log(`Subscribed to ${count} channel(s).`);
   });
 
-
   // @ts-ignore
   redisSubscriber.on("message", async (_chafromnnel, message) => {
     const trade = JSON.parse(message);

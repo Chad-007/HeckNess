@@ -32,6 +32,7 @@ interface ActiveOrder {
   order_amount: string | number;
   take_profit_price: string | number;
   stop_loss_price: string | number;
+  leverage: string | number;
   exit_price?: string | number;
   pnl?: string | number;
   status?: string;
@@ -39,6 +40,7 @@ interface ActiveOrder {
 
 const intervals = ["1 minute", "5 minutes", "10 minutes", "30 minutes"];
 const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+
 const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
   const chartData = useMemo(
     () =>
@@ -53,6 +55,7 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
       })),
     [candles]
   );
+
   const options: ApexOptions = {
     chart: { 
       type: "candlestick", 
@@ -110,18 +113,19 @@ export default function HomePage() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [interval, setIntervalState] = useState("1 minute");
   const [symbol, setSymbol] = useState("BTCUSDT");
-  // the prices state is a single map
+  const [leverage, setLeverage] = useState<number>(2);
   const [prices, setPrices] = useState<Record<string, number>>({ BTCUSDT: 0, ETHUSDT: 0, SOLUSDT: 0 });
   const [orderAmount, setOrderAmount] = useState<number>(100);
   const [cashBalance, setCashBalance] = useState<number>(0);
-  const [marginPercent, setMarginPercent] = useState<number>(5);
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [orderHistory, setOrderHistory] = useState<ActiveOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const router = useRouter();  
+  
   const toNumber = (value: string | number): number => {
     return typeof value === 'string' ? parseFloat(value) : value;
   };
+
   const calculatePortfolioValue = () => {
     let positionValue = 0;
     activeOrders.forEach(order => {
@@ -129,20 +133,23 @@ export default function HomePage() {
       if (currentPrice) {
         const entryPrice = toNumber(order.entry_price);
         const quantity = toNumber(order.quantity);
-        const orderAmount = toNumber(order.order_amount);
+        const margin = toNumber(order.order_amount);
         
+        let pnl = 0;
         if (order.type === "buy") {
-          positionValue += quantity * currentPrice;
+          pnl = (currentPrice - entryPrice) * quantity;
         } else {
-          // i think this logic will work
-         // ie if 150 $ orderamount then entry price  = 100 current price = 50 quantity  = 1 then  150+(100-50)*1 = 200 so i have a profit here
-          positionValue += orderAmount + (entryPrice - currentPrice) * quantity;
+          pnl = (entryPrice - currentPrice) * quantity;
         }
+        
+        positionValue += margin + pnl;
       }
     });
     return cashBalance + positionValue;
   };
+
   const totalPortfolioValue = calculatePortfolioValue();
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -210,7 +217,6 @@ export default function HomePage() {
         },
         body: JSON.stringify({ orderId })
       });
-      
       if (res.ok) {
         const data = await res.json();
         alert(`Order closed! PnL: $${data.pnl.toFixed(2)}`);
@@ -230,12 +236,13 @@ export default function HomePage() {
   const placeOrder = async (type: "buy" | "sell") => {
     if (!orderAmount || orderAmount <= 0) return alert("Enter valid amount");
     if (cashBalance < orderAmount) return alert("Insufficient balance");
+    
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("http://localhost:3005/placeorder", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ symbol, type, orderAmount, marginPercent }),
+        body: JSON.stringify({ symbol, type, orderAmount, leverage }), 
       });
       if (!res.ok) throw new Error("Order failed");
       
@@ -247,21 +254,23 @@ export default function HomePage() {
       alert("Error placing order");
     }
   };
+
   const calculateOrderPnL = (order: ActiveOrder, currentPrice: number) => {
     const entryPrice = toNumber(order.entry_price);
     const quantity = toNumber(order.quantity);
-    const orderAmount = toNumber(order.order_amount);
-    let currentValue: number;
+    const margin = toNumber(order.order_amount);
+    
+    let pnl = 0;
     if (order.type === "buy") {
-      currentValue = quantity * currentPrice;
+      pnl = (currentPrice - entryPrice) * quantity;
     } else {
-      currentValue = orderAmount + (entryPrice - currentPrice) * quantity;
+      pnl = (entryPrice - currentPrice) * quantity;
     }
-    const pnl = currentValue - orderAmount;
-    const pnlPercent = (pnl / orderAmount) * 100;
+    
+    const currentValue = margin + pnl;
+    const pnlPercent = margin > 0 ? (pnl / margin) * 100 : 0;
     return { pnl, pnlPercent, currentValue };
   };
-
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3006");
@@ -296,14 +305,12 @@ export default function HomePage() {
     
     return () => clearInterval(refreshInterval);
   }, []);
-  // im giving a leverage here so im multiplying
-  const leverage = 5;
+
   return (
     <div className="min-h-screen text-white" style={{ 
       fontFamily: '"Inter", "Helvetica", "Arial", sans-serif',
       background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
     }}>
-
       <div className="border-b border-gray-700 p-8" style={{
         background: 'rgba(0, 0, 0, 0.95)',
         backdropFilter: 'blur(10px)',
@@ -363,6 +370,7 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+      
       <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3">
           <CandlestickChart candles={candles} />
@@ -372,7 +380,7 @@ export default function HomePage() {
           
           <div className="space-y-6">
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Amount ($)</label>
+              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Margin ($)</label>
               <input
                 type="number"
                 value={orderAmount}
@@ -383,11 +391,11 @@ export default function HomePage() {
             </div>
             
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Margin (%)</label>
+              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Leverage (TP: +2% | SL: -2%)</label>
               <input
                 type="number"
-                value={marginPercent}
-                onChange={(e) => setMarginPercent(parseFloat(e.target.value))}
+                value={leverage}
+                onChange={(e) => setLeverage(parseFloat(e.target.value))}
                 min="1"
                 max="20"
                 step="0.5"
@@ -400,9 +408,17 @@ export default function HomePage() {
               <div className="text-xs text-gray-500 uppercase tracking-wide">
                 Price: <span className="text-white">${prices[symbol]?.toFixed(2) || "0.00"}</span>
               </div>
-              {/* divide the current orderamount with the price of the current then you get the quantity of what you bought*/}
               <div className="text-xs text-gray-500 uppercase tracking-wide">
-                Quantity: <span className="text-white">{prices[symbol] ? (orderAmount / prices[symbol]).toFixed(6) : "0.000000"}</span>
+                Position Size: <span className="text-white">${prices[symbol] ? (orderAmount * leverage).toFixed(2) : "0.00"}</span>
+              </div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide">
+                Quantity: <span className="text-white">{prices[symbol] ? ((orderAmount * leverage) / prices[symbol]).toFixed(6) : "0.000000"}</span>
+              </div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide">
+                Take Profit: <span className="text-green-400">${prices[symbol] ? (prices[symbol] * 1.02).toFixed(2) : "0.00"}</span>
+              </div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide">
+                Stop Loss: <span className="text-red-400">${prices[symbol] ? (prices[symbol] * 0.98).toFixed(2) : "0.00"}</span>
               </div>
             </div>
             
@@ -423,103 +439,138 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+      
       {activeOrders.length > 0 && (
-        <div className="max-w-7xl mx-auto p-4">
-          <h2 className="text-xl font-bold mb-4">Active Positions</h2>
-          <div className="space-y-2">
-            {activeOrders.map((order) => {
-              const currentPrice = prices[order.symbol];
-              const { pnl, pnlPercent } = calculateOrderPnL(order, currentPrice || toNumber(order.entry_price));
-              
-              return (
-                <div key={order.id} className="bg-gray-900 border border-gray-600 rounded p-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-1 rounded text-sm font-bold ${
-                          order.type === "buy" ? "bg-green-600" : "bg-red-600"
-                        }`}>
-                          {order.type.toUpperCase()}
-                        </span>
-                        <span className="font-bold">{order.symbol}</span>
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="bg-black border border-gray-800 rounded p-6">
+            <h2 className="text-2xl font-light mb-6 uppercase tracking-wider text-white">Active Positions</h2>
+            <div className="space-y-4">
+              {activeOrders.map((order) => {
+                const currentPrice = prices[order.symbol];
+                const { pnl, pnlPercent } = calculateOrderPnL(order, currentPrice || toNumber(order.entry_price));
+                const leverage = toNumber(order.leverage);
+                const margin = toNumber(order.order_amount);
+                const positionSize = margin * leverage;
+                
+                return (
+                  <div 
+                    key={order.id} 
+                    className="bg-gray-900/50 border border-gray-700/50 rounded p-6 backdrop-blur-sm"
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.7)',
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-3">
+                        <div className="flex items-center space-x-3">
+                          <span className={`px-3 py-1 rounded font-bold text-sm uppercase tracking-wide ${
+                            order.type === "buy" ? "bg-green-600/80 text-white" : "bg-red-600/80 text-white"
+                          }`}>
+                            {order.type}
+                          </span>
+                          <span className="text-white font-light text-lg tracking-wide">{order.symbol}</span>
+                          <span className="text-blue-400 text-sm font-light">{leverage}x</span>
+                        </div>
+                        <div className="text-sm text-gray-400 space-y-1">
+                          <div>Entry: <span className="text-white">${toNumber(order.entry_price).toFixed(2)}</span></div>
+                          <div>Current: <span className="text-white">${currentPrice?.toFixed(2) || "..."}</span></div>
+                          <div>Margin: <span className="text-white">${margin.toFixed(2)}</span></div>
+                          <div>Position Size: <span className="text-white">${positionSize.toFixed(2)}</span></div>
+                        </div>
+                        <div className="text-xs text-gray-500 space-y-1">
+                          <div>TP: <span className="text-green-400">${toNumber(order.take_profit_price).toFixed(2)}</span></div>
+                          <div>SL: <span className="text-red-400">${toNumber(order.stop_loss_price).toFixed(2)}</span></div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-400 mt-1">
-                        Entry: ${toNumber(order.entry_price).toFixed(2)} | 
-                        Current: ${currentPrice?.toFixed(2) || "..."} | 
-                        Amount: ${toNumber(order.order_amount).toFixed(2)}
+                      <div className="text-right space-y-2">
+                        <div className={`text-2xl font-light ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                        </div>
+                        <div className={`text-lg ${pnlPercent >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
+                        </div>
+                        <button 
+                          onClick={() => closeOrder(order.id)}
+                          className="bg-black text-white border border-gray-700 px-4 py-2 hover:bg-white hover:text-black transition-all duration-300 text-sm uppercase tracking-wide"
+                        >
+                          Close Position
+                        </button>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        TP: ${toNumber(order.take_profit_price).toFixed(2)} | 
-                        SL: ${toNumber(order.stop_loss_price).toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-lg font-bold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
-                      </div>
-                      <div className={`text-sm ${pnlPercent >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
-                      </div>
-                      <button 
-                        onClick={() => closeOrder(order.id)}
-                        className="mt-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-                      >
-                        Close
-                      </button>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
       {showHistory && orderHistory.length > 0 && (
-        <div className="max-w-7xl mx-auto p-4">
-          <h2 className="text-xl font-bold mb-4">Order History</h2>
-          <div className="space-y-2">
-            {orderHistory.map((order) => {
-              const pnl = order.pnl ? toNumber(order.pnl) : 0;
-              const orderAmount = toNumber(order.order_amount);
-              const pnlPercent = orderAmount > 0 ? (pnl / orderAmount) * 100 : 0;
-              
-              return (
-                <div key={order.id} className="bg-gray-900 border border-gray-600 rounded p-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-1 rounded text-sm font-bold ${
-                          order.type === "buy" ? "bg-green-600" : "bg-red-600"
-                        }`}>
-                          {order.type.toUpperCase()}
-                        </span>
-                        <span className="font-bold">{order.symbol}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          order.status === 'take_profit' ? 'bg-green-700' :
-                          order.status === 'stop_loss' ? 'bg-red-700' : 'bg-blue-700'
-                        }`}>
-                          {order.status?.toUpperCase().replace('_', ' ')}
-                        </span>
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="bg-black border border-gray-800 rounded p-6">
+            <h2 className="text-2xl font-light mb-6 uppercase tracking-wider text-white">Order History</h2>
+            <div className="space-y-4">
+              {orderHistory.map((order) => {
+                const pnl = order.pnl ? toNumber(order.pnl) : 0;
+                const margin = toNumber(order.order_amount);
+                const leverage = toNumber(order.leverage);
+                const pnlPercent = margin > 0 ? (pnl / margin) * 100 : 0;
+                const positionSize = margin * leverage;
+                
+                const getStatusColor = (status: string) => {
+                  switch (status) {
+                    case 'take_profit': return 'bg-green-700/80';
+                    case 'stop_loss': return 'bg-red-700/80';
+                    case 'liquidated': return 'bg-red-900/80';
+                    case 'manually_closed': return 'bg-blue-700/80';
+                    default: return 'bg-gray-700/80';
+                  }
+                };
+                
+                return (
+                  <div 
+                    key={order.id} 
+                    className="bg-gray-900/30 border border-gray-700/30 rounded p-6 backdrop-blur-sm"
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.5)',
+                      backdropFilter: 'blur(5px)',
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-3">
+                        <div className="flex items-center space-x-3">
+                          <span className={`px-3 py-1 rounded font-bold text-sm uppercase tracking-wide ${
+                            order.type === "buy" ? "bg-green-600/60 text-white" : "bg-red-600/60 text-white"
+                          }`}>
+                            {order.type}
+                          </span>
+                          <span className="text-white font-light text-lg tracking-wide">{order.symbol}</span>
+                          <span className="text-blue-400 text-sm font-light">{leverage}x</span>
+                          <span className={`text-xs px-2 py-1 rounded text-white uppercase tracking-wide ${getStatusColor(order.status || 'unknown')}`}>
+                            {order.status?.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-400 space-y-1">
+                          <div>Entry: <span className="text-white">${toNumber(order.entry_price).toFixed(2)}</span></div>
+                          <div>Exit: <span className="text-white">${order.exit_price ? toNumber(order.exit_price).toFixed(2) : "N/A"}</span></div>
+                          <div>Margin: <span className="text-white">${margin.toFixed(2)}</span></div>
+                          <div>Position Size: <span className="text-white">${positionSize.toFixed(2)}</span></div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-400 mt-1">
-                        Entry: ${toNumber(order.entry_price).toFixed(2)} | 
-                        Exit: ${order.exit_price ? toNumber(order.exit_price).toFixed(2) : "N/A"} | 
-                        Amount: ${orderAmount.toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-lg font-bold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
-                      </div>
-                      <div className={`text-sm ${pnlPercent >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
+                      <div className="text-right space-y-2">
+                        <div className={`text-2xl font-light ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                        </div>
+                        <div className={`text-lg ${pnlPercent >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
