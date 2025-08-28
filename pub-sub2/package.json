@@ -1,0 +1,35 @@
+{
+  "name": "backend-main",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsc -b && node dist/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^6.12.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/ioredis": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/pg": "^8.15.5",
+    "@types/ws": "^8.18.1",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "ioredis": "^5.7.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "prisma": "^6.12.0",
+    "typescript": "^5.8.3",
+    "ws": "^8.18.3",
+    "zod": "^4.0.10"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0"
+  }
+}

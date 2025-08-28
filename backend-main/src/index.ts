@@ -20,7 +20,6 @@ const pool = new Pool({
 const latestPrices: Record<string, number> = {};
 //@ts-ignore
 const redisSubscriber = new Redis({ host: "127.0.0.1", port: 6380 });
-
 function authMiddleware(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
   if (!authHeader) return res.status(401).json({ error: "No token" });
@@ -210,7 +209,6 @@ redisSubscriber.on("message", async (_channel, message) => {
 
   try {
     const ordersRes = await pool.query("SELECT * FROM orders WHERE symbol=$1 AND status='active'", [symbol]);
-
     for (const order of ordersRes.rows) {
       const entryPrice = parseFloat(order.entry_price);
       const tpPrice = parseFloat(order.take_profit_price);

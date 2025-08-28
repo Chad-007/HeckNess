@@ -297,6 +297,7 @@ export default function HomePage() {
     return () => clearInterval(intervalId);
   }, [fetchCandles]);
 
+  
   useEffect(() => {
     const refreshInterval = setInterval(() => {
       fetchOrders();
