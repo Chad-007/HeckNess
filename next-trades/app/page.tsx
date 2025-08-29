@@ -1,9 +1,8 @@
 "use client";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
-import { UserStar } from "lucide-react";
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 interface Trade {
@@ -42,6 +41,16 @@ interface ActiveOrder {
 const intervals = ["1 minute", "5 minutes", "10 minutes", "30 minutes"];
 const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
 
+const getIntervalMs = (interval: string): number => {
+  switch (interval) {
+    case "1 minute": return 60 * 1000;
+    case "5 minutes": return 5 * 60 * 1000;
+    case "10 minutes": return 10 * 60 * 1000;
+    case "30 minutes": return 30 * 60 * 1000;
+    default: return 60 * 1000;
+  }
+};
+
 const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
   const chartData = useMemo(
     () =>
@@ -64,6 +73,18 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
       background: "#0a0a0a", 
       toolbar: { show: false },
       fontFamily: '"Inter", "Helvetica", "Arial", sans-serif',
+      animations: {
+        enabled: true,
+        speed: 800,
+        animateGradually: {
+          enabled: true,
+          delay: 150
+        },
+        dynamicAnimation: {
+          enabled: true,
+          speed: 350
+        }
+      }
     },
     theme: { mode: "dark" },
     grid: { 
@@ -121,9 +142,12 @@ export default function HomePage() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [orderHistory, setOrderHistory] = useState<ActiveOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [tpPrice,settpprice] = useState<number>(0);
-  const [slPrice,setslprice] = useState<number>(0);
+  const [tpPrice,settpPrice] = useState<number>(0);
+  const [slPrice,setslPrice] = useState<number>(0);
   const router = useRouter();  
+  const currentCandleRef = useRef<Candle | null>(null);
+  const intervalMsRef = useRef<number>(getIntervalMs(interval));
+  const lastCandleTimeRef = useRef<number>(0);
   
   const toNumber = (value: string | number): number => {
     return typeof value === 'string' ? parseFloat(value) : value;
@@ -152,6 +176,63 @@ export default function HomePage() {
   };
 
   const totalPortfolioValue = calculatePortfolioValue();
+
+  const createCandleFromTrade = (trade: Trade, timestamp: number): Candle => {
+    const price = parseFloat(trade.p);
+    const candleTime = new Date(Math.floor(timestamp / intervalMsRef.current) * intervalMsRef.current);
+    
+    return {
+      bucket: candleTime.toISOString(),
+      symbol: trade.s,
+      open_price: price.toString(),
+      high_price: price.toString(),
+      low_price: price.toString(),
+      close_price: price.toString(),
+      volume: trade.q
+    };
+  };
+
+  const updateCandleWithTrade = (candle: Candle, trade: Trade): Candle => {
+    const price = parseFloat(trade.p);
+    const volume = parseFloat(candle.volume) + parseFloat(trade.q);
+    
+    return {
+      ...candle,
+      high_price: Math.max(parseFloat(candle.high_price), price).toString(),
+      low_price: Math.min(parseFloat(candle.low_price), price).toString(),
+      close_price: price.toString(),
+      volume: volume.toString()
+    };
+  };
+  const updateCandlesWithTrade = useCallback((trade: Trade) => {
+    if (trade.s !== symbol) return;
+    
+    const timestamp = trade.T;
+    const candleStartTime = Math.floor(timestamp / intervalMsRef.current) * intervalMsRef.current;
+    
+    setCandles(prevCandles => {
+      if (prevCandles.length === 0) return prevCandles;
+      
+      const newCandles = [...prevCandles];
+      const lastCandle = newCandles[newCandles.length - 1];
+      const lastCandleTime = new Date(lastCandle.bucket).getTime();
+      
+      if (candleStartTime === lastCandleTime) {
+        newCandles[newCandles.length - 1] = updateCandleWithTrade(lastCandle, trade);
+        currentCandleRef.current = newCandles[newCandles.length - 1];
+      } else if (candleStartTime > lastCandleTime) {
+        const newCandle = createCandleFromTrade(trade, timestamp);
+        newCandles.push(newCandle);
+        currentCandleRef.current = newCandle;
+        
+        if (newCandles.length > 100) {
+          newCandles.shift();
+        }
+      }
+      
+      return newCandles;
+    });
+  }, [symbol]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -245,7 +326,7 @@ export default function HomePage() {
       const res = await fetch("http://localhost:3005/placeorder", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ symbol, type, orderAmount, leverage ,tpPrice,slPrice}), 
+        body: JSON.stringify({ symbol, type, orderAmount, leverage,tpPrice,slPrice }), 
       });
       if (!res.ok) throw new Error("Order failed");
       
@@ -274,33 +355,51 @@ export default function HomePage() {
     const pnlPercent = margin > 0 ? (pnl / margin) * 100 : 0;
     return { pnl, pnlPercent, currentValue };
   };
-
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3006");
+    
     ws.onmessage = (event) => {
       const data: Trade = JSON.parse(event.data);
       setPrices((prev) => ({ ...prev, [data.s]: parseFloat(data.p) }));
+      updateCandlesWithTrade(data);
     };
+    
+    ws.onopen = () => {
+      console.log("WebSocket connected for real-time updates");
+    };
+    
+    ws.onclose = () => {
+      console.log("WebSocket disconnected");
+    };
+    
     return () => ws.close();
-  }, []);
-
+  }, [updateCandlesWithTrade]);
   const fetchCandles = useCallback(async () => {
     try {
-      const res = await fetch(`http://localhost:3000/candles?interval=${encodeURIComponent(interval)}&duration=1 hour`);
+      console.log(`Fetching initial candles for ${symbol} - ${interval}`);
+      const res = await fetch(`http://localhost:3000/candles?interval=${encodeURIComponent(interval)}&duration=1 hours`);
       const data = await res.json();
-      setCandles(data.filter((c: Candle) => c.symbol === symbol));
+      const filteredCandles = data.filter((c: Candle) => c.symbol === symbol);
+      
+      setCandles(filteredCandles);
+      
+      intervalMsRef.current = getIntervalMs(interval);
+      if (filteredCandles.length > 0) {
+        const lastCandle = filteredCandles[filteredCandles.length - 1];
+        currentCandleRef.current = lastCandle;
+        lastCandleTimeRef.current = new Date(lastCandle.bucket).getTime();
+      }
+      
+      console.log(`Loaded ${filteredCandles.length} initial candles`);
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching candles:", err);
     }
   }, [interval, symbol]);
-
   useEffect(() => {
     fetchCandles();
-    const intervalId = setInterval(fetchCandles, 60 * 1000);
-    return () => clearInterval(intervalId);
   }, [fetchCandles]);
 
-  
+  // Refresh orders and balance periodically
   useEffect(() => {
     const refreshInterval = setInterval(() => {
       fetchOrders();
@@ -333,7 +432,7 @@ export default function HomePage() {
           </div>
           <div className="flex items-center space-x-8">
             <select 
-              value={symbol} 
+              value={symbol}  
               onChange={(e) => setSymbol(e.target.value)} 
               className="bg-black text-white border-2 border-gray-700 px-6 py-3 rounded-sm outline-none hover:border-white transition-all duration-300 text-lg font-light"
               style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
@@ -395,7 +494,7 @@ export default function HomePage() {
             </div>
             
             <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Leverage (TP: +2% | SL: -2%)</label>
+              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Leverage </label>
               <input
                 type="number"
                 value={leverage}
@@ -407,12 +506,12 @@ export default function HomePage() {
                 style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
               />
             </div>
-            <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">take profit price</label>
+             <div>
+              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Take Profit</label>
               <input
                 type="number"
                 value={tpPrice}
-                onChange={(e) => settpprice(parseFloat(e.target.value))}
+                onChange={(e) => settpPrice(parseFloat(e.target.value))}
                 min="1"
                 max="20"
                 step="0.5"
@@ -420,12 +519,12 @@ export default function HomePage() {
                 style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
               />
             </div>
-            <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">stop loss price</label>
+             <div>
+              <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Stop Loss</label>
               <input
                 type="number"
                 value={slPrice}
-                onChange={(e) => setslprice(parseFloat(e.target.value))}
+                onChange={(e) => setslPrice(parseFloat(e.target.value))}
                 min="1"
                 max="20"
                 step="0.5"

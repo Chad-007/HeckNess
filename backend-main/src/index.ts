@@ -75,7 +75,6 @@ app.post("/login", async (req, res) => {
 app.post("/placeorder", authMiddleware, async (req: any, res: any) => {
   const { symbol, type, orderAmount, leverage ,tpPrice,slPrice} = req.body;
   const user = req.user;
-
   try {
     const margin = parseFloat(orderAmount);
     const lev = parseFloat(leverage);

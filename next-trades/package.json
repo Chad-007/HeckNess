@@ -13,6 +13,7 @@
     "@types/cors": "^2.8.19",
     "@types/recharts": "^2.0.1",
     "apexcharts": "^5.3.4",
+    "lightweight-charts": "^5.0.8",
     "lucide-react": "^0.542.0",
     "next": "15.5.0",
     "react": "19.1.0",
