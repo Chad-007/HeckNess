@@ -358,7 +358,6 @@ export default function HomePage() {
   };
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3006");
-    
     ws.onmessage = (event) => {
       const data: Trade = JSON.parse(event.data);
       setPrices((prev) => ({ ...prev, [data.s]: parseFloat(data.p) }));

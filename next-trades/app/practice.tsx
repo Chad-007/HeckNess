@@ -7,6 +7,8 @@ import { Time } from "lightweight-charts";
 import { time } from "console";
 import { hasSubscribers } from "diagnostics_channel";
 import { headers } from "next/headers";
+import { useErrorOverlayReducer } from "next/dist/next-devtools/dev-overlay/shared";
+import { fileURLToPath } from "url";
 const Chart = dynamic(()=> import ("react-apexcharts"),{ssr:false})
 interface Trade{
     p:string,
@@ -297,12 +299,103 @@ export default function HomePage(){
                     headers:{Authorization:`Bearer ${token}`},
                     body:JSON.stringify({orderid})
                 })
-
+                if(res.ok){
+                    const data = await res.json()
+                    alert(`Order closed! PnL: $${data.pnl.toFixed(2)}`);
+                    fetchOrders();
+                    fetchBalance();
+                    fetchOrderHistory();
+                }
         }
         catch{
             console.log("there was some issue with closing the order")
         }
     }
+
+    const placeOrder = async(type:"buy"|"sell")=>{
+        const token = localStorage.getItem("token")
+        try{
+            const res = await fetch("http://localhost:3000",{
+            headers:{Authorization:`Bearer ${token}`},
+            body:JSON.stringify({symbol,type,orderAmount,leverage,tpPrice,slPrice})
+        })
+        if(res.ok){
+            fetchBalance();
+            fetchOrders();
+            fetchOrderHistory();
+            console.log("the order has been place succesfully")
+        }
+
+        }catch{
+            console.log("the was some issue whhile placing the order")
+        }
+    }
+
+    const calculateOrderPnL= (order:ActiveOrder,currentPrice:number)=>{
+        const entryPrice = tonumber(order.entry_price);
+        const quantity = tonumber(order.quantity);
+            const margin = tonumber(order.order_amount);
+        let pnl = 0;
+    if (order.type === "buy") {
+      pnl = (currentPrice - entryPrice) * quantity;
+    } else {
+      pnl = (entryPrice - currentPrice) * quantity;
+    }
+    const currentValue = margin + pnl;
+    const pnlPercent = margin > 0 ? (pnl / margin) * 100 : 0;
+    return { pnl, pnlPercent, currentValue };
+    }
+    useEffect(()=>{
+        const ws = new WebSocket("ws://localhost:3006")
+        ws.onmessage = (event)=>{
+            const data:Trade = JSON.parse(event.data)
+            setPrices((prev)=>({
+                ...prev,
+                [data.s]:parseFloat(data.p)
+            }))
+            updateCandlesWithTrade(data)
+        }
+        ws.onopen = ()=>{
+            console.log("websocket connected")
+        }
+        ws.onclose = ()=>{
+            console.log("websocket closed")
+        }
+        return()=>ws.close()
+    },[updateCandlesWithTrade])
+
+    const fetchCandles  = useCallback(async()=>{
+        const res = await fetch(`http://localhost:3000/candles?interval=${encodeURIComponent(interval)}&duration=1 hours`)
+        const data = await res.json()
+        const filteredCandles = data.filter((c:Candle)=>{
+            c.symbol===symbol
+        })
+        setCandles(filteredCandles)
+        intervalMsRef.current = getIntervals(interval)
+
+        if(filteredCandles.length>0){
+            const lastCandle = filteredCandles[filteredCandles.length-1]
+            currentCandleRef.current = lastCandle
+            lastCandleTimeRef.current = new Date(lastCandle.bucket).getTime()
+        }
+    },[interval,symbol])
+
+    useEffect(()=>{
+        fetchCandles()
+    },[fetchCandles])
+
+    useEffect(()=>{
+        const refreshInterval = setInterval(() => {
+            fetchBalance()
+            fetchOrders()
+        }, 2000);
+        return ()=>clearInterval(refreshInterval)
+    },[])
+
+
+
+
+
 
 
 
