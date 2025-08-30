@@ -284,5 +284,4 @@ redisSubscriber.on("message", async (_channel, message) => {
     console.error("Error in trade execution:", err);
   }
 });
-
 app.listen(3005, () => console.log("Backend running on port 3005"));

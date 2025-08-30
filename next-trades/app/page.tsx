@@ -71,18 +71,49 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
       type: "candlestick", 
       height: 400, 
       background: "#0a0a0a", 
-      toolbar: { show: false },
+      toolbar: { 
+        show: false
+      },
+      zoom: {
+        enabled: true,
+        type: 'x',
+        autoScaleYaxis: true,
+        zoomedArea: {
+          fill: {
+            color: '#90CAF9',
+            opacity: 0.1
+          },
+          stroke: {
+            color: '#0D47A1',
+            opacity: 0.4,
+            width: 1
+          }
+        }
+      },
+      selection: {
+        enabled: true,
+        type: 'x',
+        fill: {
+          color: '#24292e',
+          opacity: 0.1
+        },
+        stroke: {
+          width: 1,
+          dashArray: 3,
+          color: '#24292e',
+          opacity: 0.4
+        }
+      },
       fontFamily: '"Inter", "Helvetica", "Arial", sans-serif',
       animations: {
         enabled: true,
-        speed: 800,
+        speed: 200,
         animateGradually: {
-          enabled: true,
-          delay: 150
+          enabled: false
         },
         dynamicAnimation: {
           enabled: true,
-          speed: 350
+          speed: 200
         }
       }
     },
@@ -108,6 +139,7 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
         style: { colors: "#888", fontSize: "11px" },
         formatter: (v: number) => `$${v.toFixed(2)}`,
       },
+      forceNiceScale: true
     },
     plotOptions: {
       candlestick: {
@@ -115,10 +147,45 @@ const CandlestickChart = ({ candles }: { candles: Candle[] }) => {
         wick: { useFillColor: true },
       },
     },
+    tooltip: {
+      enabled: true,
+      theme: "dark",
+      style: {
+        fontSize: "12px",
+        fontFamily: '"Inter", "Helvetica", "Arial", sans-serif'
+      },
+      custom: function({ seriesIndex, dataPointIndex, w }) {
+        const data = w.globals.initialSeries[seriesIndex].data[dataPointIndex];
+        if (!data) return '';
+        
+        const [open, high, low, close] = data.y;
+        const date = new Date(data.x);
+        
+        return `
+          <div style="padding: 10px; background: #000; border: 1px solid #333;">
+            <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">
+              ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
+            </div>
+            <div style="color: #888;">Open: <span style="color: #fff;">$${open.toFixed(2)}</span></div>
+            <div style="color: #888;">High: <span style="color: #00ff88;">$${high.toFixed(2)}</span></div>
+            <div style="color: #888;">Low: <span style="color: #ff4444;">$${low.toFixed(2)}</span></div>
+            <div style="color: #888;">Close: <span style="color: #fff;">$${close.toFixed(2)}</span></div>
+          </div>
+        `;
+      }
+    },
+    responsive: [{
+      breakpoint: 1000,
+      options: {
+        chart: {
+          height: 300
+        }
+      }
+    }]
   };
 
   return (
-    <div className="bg-black border border-gray-800 rounded">
+    <div className="bg-black border border-gray-800">
       <div className="p-3 border-b border-gray-800">
         <h3 className="text-white font-light text-lg tracking-wide">
           {candles[0]?.symbol || "CHART"}
@@ -142,8 +209,8 @@ export default function HomePage() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [orderHistory, setOrderHistory] = useState<ActiveOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [tpPrice,settpPrice] = useState<number>(0);
-  const [slPrice,setslPrice] = useState<number>(0);
+  const [tpPrice,settpPrice] = useState<number|null>(null);
+  const [slPrice,setslPrice] = useState<number|null>(null);
   const router = useRouter();  
   const currentCandleRef = useRef<Candle | null>(null);
   const intervalMsRef = useRef<number>(getIntervalMs(interval));
@@ -226,7 +293,7 @@ export default function HomePage() {
         newCandles.push(newCandle);
         currentCandleRef.current = newCandle;
         
-        if (newCandles.length > 100) {
+        if (newCandles.length > 50) {
           newCandles.shift();
         }
       }
@@ -377,20 +444,29 @@ export default function HomePage() {
   const fetchCandles = useCallback(async () => {
     try {
       console.log(`Fetching initial candles for ${symbol} - ${interval}`);
-      const res = await fetch(`http://localhost:3000/candles?interval=${encodeURIComponent(interval)}&duration=1 hours`);
+      // Reduce duration based on interval to show fewer candles
+      let duration = "30 minutes";
+      if (interval === "5 minutes") duration = "2 hours";
+      else if (interval === "10 minutes") duration = "4 hours";
+      else if (interval === "30 minutes") duration = "12 hours";
+      
+      const res = await fetch(`http://localhost:3000/candles?interval=${encodeURIComponent(interval)}&duration=${duration}`);
       const data = await res.json();
       const filteredCandles = data.filter((c: Candle) => c.symbol === symbol);
       
-      setCandles(filteredCandles);
+      // Limit to maximum 50 candles for better performance and zoom
+      const limitedCandles = filteredCandles.slice(-50);
+      
+      setCandles(limitedCandles);
       
       intervalMsRef.current = getIntervalMs(interval);
-      if (filteredCandles.length > 0) {
-        const lastCandle = filteredCandles[filteredCandles.length - 1];
+      if (limitedCandles.length > 0) {
+        const lastCandle = limitedCandles[limitedCandles.length - 1];
         currentCandleRef.current = lastCandle;
         lastCandleTimeRef.current = new Date(lastCandle.bucket).getTime();
       }
       
-      console.log(`Loaded ${filteredCandles.length} initial candles`);
+      console.log(`Loaded ${limitedCandles.length} initial candles`);
     } catch (err) {
       console.error("Error fetching candles:", err);
     }
@@ -434,7 +510,7 @@ export default function HomePage() {
             <select 
               value={symbol}  
               onChange={(e) => setSymbol(e.target.value)} 
-              className="bg-black text-white border-2 border-gray-700 px-6 py-3 rounded-sm outline-none hover:border-white transition-all duration-300 text-lg font-light"
+              className="bg-black text-white border border-gray-700 px-6 py-3 outline-none hover:border-white transition-all duration-300 text-lg font-light"
               style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
             >
               {symbols.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -442,7 +518,7 @@ export default function HomePage() {
             <select 
               value={interval} 
               onChange={(e) => setIntervalState(e.target.value)} 
-              className="bg-black text-white border-2 border-gray-700 px-6 py-3 rounded-sm outline-none hover:border-white transition-all duration-300 text-lg font-light"
+              className="bg-black text-white border border-gray-700 px-6 py-3 outline-none hover:border-white transition-all duration-300 text-lg font-light"
               style={{ fontFamily: '"Inter", "Helvetica", "Arial", sans-serif' }}
             >
               {intervals.map((i) => <option key={i} value={i}>{i}</option>)}
@@ -460,12 +536,12 @@ export default function HomePage() {
                 setShowHistory(!showHistory);
                 if (!showHistory) fetchOrderHistory();
               }}
-              className="bg-black text-white border-2 border-gray-700 px-6 py-3 hover:bg-white hover:text-black transition-all duration-300 uppercase tracking-wide text-lg font-light rounded-sm"
+              className="bg-black text-white border border-gray-700 px-6 py-4 hover:bg-white hover:text-black transition-all duration-300 font-light uppercase tracking-widest"
             >
               History
             </button>
             <button
-              className="bg-black text-white border-2 border-gray-700 px-6 py-3 hover:bg-white hover:text-black transition-all duration-300 uppercase tracking-wide text-lg font-light rounded-sm"
+              className="bg-black text-white border border-gray-700 px-6 py-4 hover:bg-white hover:text-black transition-all duration-300 font-light uppercase tracking-widest"
               onClick={() => { localStorage.clear(); router.push("/login"); }}
             >
               Logout
@@ -478,7 +554,7 @@ export default function HomePage() {
         <div className="lg:col-span-3">
           <CandlestickChart candles={candles} />
         </div>
-        <div className="bg-black border border-gray-800 rounded p-6">
+        <div className="bg-black border border-gray-800 p-6">
           <h3 className="text-lg font-light mb-6 text-center uppercase tracking-widest text-white">Trade {symbol}</h3>
           
           <div className="space-y-6">
@@ -510,7 +586,7 @@ export default function HomePage() {
               <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Take Profit</label>
               <input
                 type="number"
-                value={tpPrice}
+                value={tpPrice||""}
                 onChange={(e) => settpPrice(parseFloat(e.target.value))}
                 min="1"
                 max="20"
@@ -523,7 +599,7 @@ export default function HomePage() {
               <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">Stop Loss</label>
               <input
                 type="number"
-                value={slPrice}
+                value={slPrice||""}
                 onChange={(e) => setslPrice(parseFloat(e.target.value))}
                 min="1"
                 max="20"
@@ -571,7 +647,7 @@ export default function HomePage() {
       
       {activeOrders.length > 0 && (
         <div className="max-w-7xl mx-auto p-6">
-          <div className="bg-black border border-gray-800 rounded p-6">
+          <div className="bg-black border border-gray-800 p-6">
             <h2 className="text-2xl font-light mb-6 uppercase tracking-wider text-white">Active Positions</h2>
             <div className="space-y-4">
               {activeOrders.map((order) => {
@@ -607,10 +683,16 @@ export default function HomePage() {
                           <div>Margin: <span className="text-white">${margin.toFixed(2)}</span></div>
                           <div>Position Size: <span className="text-white">${positionSize.toFixed(2)}</span></div>
                         </div>
-                        <div className="text-xs text-gray-500 space-y-1">
-                          <div>TP: <span className="text-green-400">${toNumber(order.take_profit_price).toFixed(2)}</span></div>
-                          <div>SL: <span className="text-red-400">${toNumber(order.stop_loss_price).toFixed(2)}</span></div>
-                        </div>
+                        <div>
+                              TP: <span className="text-green-400">
+                                {order.take_profit_price != null ? `$${toNumber(order.take_profit_price).toFixed(2)}` : "—"}
+                              </span>
+                            </div>
+                            <div>
+                              SL: <span className="text-red-400">
+                                {order.stop_loss_price != null ? `$${toNumber(order.stop_loss_price).toFixed(2)}` : "—"}
+                              </span>
+                            </div>
                       </div>
                       <div className="text-right space-y-2">
                         <div className={`text-2xl font-light ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
@@ -637,7 +719,7 @@ export default function HomePage() {
 
       {showHistory && orderHistory.length > 0 && (
         <div className="max-w-7xl mx-auto p-6">
-          <div className="bg-black border border-gray-800 rounded p-6">
+          <div className="bg-black border border-gray-800 p-6">
             <h2 className="text-2xl font-light mb-6 uppercase tracking-wider text-white">Order History</h2>
             <div className="space-y-4">
               {orderHistory.map((order) => {
