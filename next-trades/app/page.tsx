@@ -180,7 +180,6 @@ export default function HomePage() {
   const createCandleFromTrade = (trade: Trade, timestamp: number): Candle => {
     const price = parseFloat(trade.p);
     const candleTime = new Date(Math.floor(timestamp / intervalMsRef.current) * intervalMsRef.current);
-    
     return {
       bucket: candleTime.toISOString(),
       symbol: trade.s,
@@ -204,6 +203,8 @@ export default function HomePage() {
       volume: volume.toString()
     };
   };
+
+
   const updateCandlesWithTrade = useCallback((trade: Trade) => {
     if (trade.s !== symbol) return;
     
@@ -237,7 +238,7 @@ export default function HomePage() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
-      router.push("/signin");
+      router.push("/login");
     } else {
       fetchOrders();
       fetchBalance();
